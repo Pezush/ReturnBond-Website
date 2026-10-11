@@ -1,7 +1,7 @@
 {
-  "latestVersionName": "1.8.4.1",
-  "latestVersionCode": 13,
-  "downloadUrl": "https://github.com/Pezush/ReturnBond/releases/download/v1.1.0/ReturnBond-v1.8.4.1.apk",
+  "latestVersionName": "1.8.4.2",
+  "latestVersionCode": 14,
+  "downloadUrl": "https://github.com/Pezush/ReturnBond/releases/download/v1.1.0/ReturnBond-v1.8.4.2.apk",
   "releaseNotes": [
     "Completed/settled payment record personal deletion",
     "Performance and smoothness optimizations",
