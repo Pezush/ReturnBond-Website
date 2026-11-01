@@ -1,202 +1,157 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import {
-  ArrowRight,
-  Bell,
-  Check,
-  CheckCircle2,
-  Clipboard,
-  CloudOff,
-  Download,
-  HandCoins,
-  Heart,
-  Menu,
-  Moon,
-  Package,
-  ReceiptText,
-  RotateCcw,
-  Send,
-  Plus,
-  ShieldCheck,
-  Smartphone,
-  Sparkles,
-  Sun,
-  Timer,
-  UserRound,
-  Wallet,
-  X,
+  ArrowRight, Bell, Check, CheckCircle2, ChevronDown, Clipboard, CloudOff, Download,
+  HandCoins, Heart, Menu, Moon, Package, ReceiptText, RotateCcw,
+  Search, Send, ShieldCheck, Smartphone, Sparkles, Sun, Timer, UserRound, Wallet, X,
 } from 'lucide-react';
 
 const APK_URL = 'https://github.com/Pezush/ReturnBond/releases/download/v1.1.0/ReturnBond-v1.8.4.5.apk';
 const UPI_ID = 'pijush4895m@okaxis';
 const UPI_URL = 'upi://pay?pa=pijush4895m@okaxis&pn=Pijush%20Mandal&cu=INR';
 const PHONE_IMAGE = '/images/file_000000001ebc81fb938f265e982f5cc8.png';
+const SITE_URL = 'https://returnbond-official.vercel.app';
 
-type Page = 'home' | 'privacy' | 'terms';
 type Theme = 'light' | 'dark' | 'system';
-
-const benefits = [
-  { icon: Wallet, title: 'Money tracking', text: 'Keep track of money you lend and borrow.' },
-  { icon: Package, title: 'Item tracking', text: 'Track physical items you lend or borrow.' },
-  { icon: Send, title: 'Shared requests', text: 'Connect two people through ReturnBond requests.' },
-  { icon: CheckCircle2, title: 'Confirmations', text: 'Payments and item returns require confirmation.' },
-  { icon: Timer, title: 'Reminders', text: 'Keep track of upcoming due dates and overdue records.' },
-  { icon: CloudOff, title: 'Offline support', text: 'Keep local records and reminders even without internet.' },
-];
+type FAQItem = readonly [string, string];
+type InfoBlock = [string, string];
 
 const features = [
-  ['Money lending', 'Track money you lend to others.', Wallet],
-  ['Money borrowing', 'Keep track of money you borrow.', HandCoins],
-  ['Item lending', 'Record physical items you give temporarily.', Package],
-  ['Item borrowing', 'Track things you have borrowed.', RotateCcw],
-  ['Payment tracking', 'Track reported and confirmed payments.', ReceiptText],
-  ['Return confirmation', 'Borrowers report returns and lenders confirm receipt.', CheckCircle2],
-  ['Requests', 'Send and receive lending or borrowing requests.', Send],
-  ['Notifications', 'Stay informed about requests, payments and returns.', Bell],
-  ['Reminders', 'Upcoming due dates and overdue notifications.', Timer],
-  ['Offline records', 'Keep local records and reminders when offline.', CloudOff],
+  { slug: 'money-lending', title: 'Money lending', short: 'Keep a clear record of money you lend, due dates and repayments.', icon: Wallet, intro: 'Record money you lend to friends, family and people you know, then keep the details easy to find.', points: ['Record the amount, person and relevant due date', 'Follow reported and confirmed repayments', 'See what remains outstanding in your personal overview'] },
+  { slug: 'money-borrowing', title: 'Money borrowing', short: 'Track money you borrow and the progress of repayments.', icon: HandCoins, intro: 'Your borrowing records deserve the same clarity as your lending records. ReturnBond keeps both sides visible in one place.', points: ['Create a personal borrowing record', 'Keep repayment progress with the record', 'Use connected transactions when the other person uses ReturnBond'] },
+  { slug: 'item-lending', title: 'Item lending', short: 'Remember the everyday items you lend and when they should come back.', icon: Package, intro: 'From books to tools, record physical items you lend so small promises do not disappear from memory.', points: ['Describe the item and the person involved', 'Add a due date when one applies', 'Track a return report and confirmation'] },
+  { slug: 'item-borrowing', title: 'Item borrowing', short: 'Keep track of items you have borrowed and their return status.', icon: RotateCcw, intro: 'ReturnBond gives borrowed items a clear place in your records, helping you remember what needs to come back.', points: ['Record items you borrow independently', 'Keep due dates close to the item record', 'Follow return reports and confirmations'] },
+  { slug: 'connected-transactions', title: 'Connected transactions', short: 'Link two people through requests, reports and confirmations.', icon: Send, intro: 'When both people use ReturnBond, connected transactions provide a shared trail for important actions.', points: ['Send and receive lending or borrowing requests', 'Report payments or item returns', 'Let the other side confirm what happened'] },
+  { slug: 'payment-tracking', title: 'Payment tracking', short: 'Record partial repayments, confirmations and remaining balances.', icon: ReceiptText, intro: 'ReturnBond records payment information; it does not move money or process a payment for you.', points: ['Record reported repayments', 'Track partial payments and what remains', 'Use confirmation to keep the shared record clear'] },
+  { slug: 'reminders', title: 'Due-date reminders', short: 'Keep upcoming and overdue records visible with reminder support.', icon: Timer, intro: 'Due dates are easier to manage when the app can remind you before and after an important date.', points: ['Schedule advance due-date warnings', 'Receive due-date and overdue reminders', 'Use recurring reminder options where configured'] },
+  { slug: 'notifications', title: 'Smart reminders and notifications', short: 'Understand local Android reminders and remote push notifications.', icon: Bell, intro: 'ReturnBond uses two different notification paths for two different jobs: local reminders on your device and Firebase Cloud Messaging for remote events.', points: ['Local reminders can be scheduled for due dates and recurring alerts', 'Firebase Cloud Messaging supports connected activity notifications', 'Delivery depends on permissions, connectivity and device behaviour'] },
+  { slug: 'offline-mode', title: 'Offline mode', short: 'Keep supported personal records and scheduled reminders available offline.', icon: CloudOff, intro: 'ReturnBond has a hybrid approach: local records and reminders can work without an active connection, while connected cloud features need internet access.', points: ['Personal records use local storage for supported offline work', 'Cloud-connected transactions require connectivity', 'The app does not promise automatic synchronization of every offline action'] },
+  { slug: 'transaction-history', title: 'Transaction history', short: 'Review your lending, borrowing, payment and return records.', icon: ReceiptText, intro: 'A useful record is one you can revisit. ReturnBond keeps transaction details and progress available for review.', points: ['Separate money and item activity', 'Review status and payment progress', 'Return to completed records when you need context'] },
 ] as const;
 
-const faqs = [
-  ['What is ReturnBond?', 'ReturnBond is a free Android app for keeping personal records of money and physical items you lend or borrow. You log entries, track due dates, send lending or borrowing requests to other ReturnBond users, and confirm payments and returns — so both sides have a clearer shared record.'],
-  ['Can I track money I lend or borrow?', 'Yes. You can record money you lend to others and money you borrow from others, track reported and confirmed payments, and view your net outstanding at a glance on the home screen.'],
-  ['Can I track items I lend to other people?', 'Yes. ReturnBond lets you record physical items you lend temporarily and items you have borrowed. Borrowers can report an item return and the lender confirms receipt, so the return is acknowledged by both sides.'],
-  ['Can I record repayments and confirm returns?', 'Yes. Payments and item returns require confirmation. One side reports a payment or return, and the other side confirms it, creating a shared record both people can see.'],
-  ['Does ReturnBond work offline?', 'Yes. ReturnBond supports local record keeping, so your records and reminders can remain available even without an internet connection.'],
-  ['Does ReturnBond automatically sync offline changes?', 'No. Offline actions are not assumed to sync automatically. ReturnBond keeps local records when you are offline, but it does not guarantee that offline changes sync on their own when you reconnect.'],
-  ['Is ReturnBond a bank or lending service?', 'No. ReturnBond is a record-keeping tool, not a bank, escrow service, payment processor or legal adviser. It does not move money, hold funds, or guarantee that another person will pay or return an item.'],
-  ['Where can I download ReturnBond for Android?', 'You can download the official ReturnBond APK from the download section on this page. It requires Android 7.0 or higher and is distributed through GitHub Releases.'],
+const faqs: FAQItem[] = [
+  ['What is ReturnBond?', 'ReturnBond is an Android app for keeping personal records of money and physical items you lend or borrow. It helps with repayments, returns, due dates and connected confirmations.'],
+  ['Is ReturnBond a bank or payment service?', 'No. ReturnBond is a personal record-management tool. It does not lend money, hold funds, transfer money, collect repayments or guarantee that another person will pay or return an item.'],
+  ['Can I track money I lend or borrow?', 'Yes. You can create money lending and borrowing records, follow repayment progress and keep remaining balances visible.'],
+  ['Can I track items I lend or borrow?', 'Yes. You can record physical items, add relevant details and follow item return reports and confirmations.'],
+  ['Can I track partial repayments?', 'Yes. ReturnBond supports payment reporting and remaining-balance tracking for repayments recorded against a transaction.'],
+  ['Does ReturnBond send due-date reminders?', 'ReturnBond supports advance warnings, due-date reminders and overdue alerts. Reminder timing can depend on your settings and Android device permissions.'],
+  ['Can I receive recurring two-hour reminders?', 'The Android app includes configured recurring reminder support, including two-hour reminder options where enabled. Android battery restrictions and permissions can affect delivery.'],
+  ['Do local reminders work without internet?', 'After successful scheduling, local reminders may operate without an active internet connection. Android permissions, battery settings and device behaviour can still affect timing.'],
+  ['Does ReturnBond use Firebase Cloud Messaging?', 'The Android implementation includes Firebase Messaging services and token handling. FCM is intended for remote notifications around connected activity and transaction events.'],
+  ['What is the difference between local and push notifications?', 'Local reminders are scheduled on your Android device for dates and recurring alerts. Push notifications are sent remotely through Firebase for applicable connected events. They are separate systems.'],
+  ['Does ReturnBond work offline?', 'Supported personal record management and local reminder scheduling can work offline. Connected transactions, cloud synchronization and remote notifications need internet access.'],
+  ['What is stored locally?', 'The Android app uses local Room database storage for supported personal records and local reminder scheduling. Cloud-connected information can use Firebase services.'],
+  ['What happens when internet access returns?', 'Connectivity allows cloud-connected features to communicate again. ReturnBond does not promise a specific conflict-resolution or automatic-sync behaviour for every offline action.'],
+  ['How do I download ReturnBond?', 'Use the official Download page to get the current APK release. Android may ask you to allow installation from your chosen source.'],
+  ['How can I request account deletion?', 'Use the official support channel available in the app or contact the independent developer through the ReturnBond support route.'],
+];
+
+const helpArticles = [
+  ['create-lending-record', 'Create a lending record', ['Open the money or item lending action.', 'Add the person, amount or item details and any due date.', 'Save the record and review it from your records area.']],
+  ['create-borrowing-record', 'Create a borrowing record', ['Choose the money or item borrowing action.', 'Add the relevant details, person and due date when applicable.', 'Save the record so it remains available for review.']],
+  ['record-items', 'Record items you lend or borrow', ['Choose item lending or item borrowing.', 'Describe the physical item clearly and add the other person.', 'Add a return date when one applies, then save.']],
+  ['send-connected-request', 'Send a connected request', ['Open the request flow from the relevant transaction action.', 'Choose the other ReturnBond user and review the details.', 'Send the request and watch for its status to change.']],
+  ['accept-request', 'Accept a request', ['Open your incoming requests.', 'Review the person, item or money details.', 'Accept only when the information is correct.']],
+  ['report-payment', 'Report a payment', ['Open the relevant money transaction.', 'Choose the payment reporting action.', 'Enter the amount and submit the report for confirmation.']],
+  ['confirm-payment', 'Confirm a payment or return', ['Open the pending report.', 'Check the amount or item details.', 'Confirm only after you have verified the action happened.']],
+  ['manage-due-dates', 'Manage due dates', ['Add or edit a due date on a supported record.', 'Choose the reminder options available to you.', 'Check Android notification and battery permissions if alerts are delayed.']],
+  ['enable-notifications', 'Enable notifications', ['Allow notification permission when Android asks.', 'Review ReturnBond notification settings.', 'Keep battery restrictions from stopping scheduled reminders where possible.']],
+  ['troubleshoot-reminders', 'Troubleshoot reminders', ['Check that notifications are enabled for ReturnBond.', 'Review battery saver and background activity settings.', 'Confirm the reminder was scheduled and that the device date and time are correct.']],
+  ['offline-functionality', 'Use ReturnBond offline', ['Open supported personal records without internet.', 'Make only actions the app presents as available offline.', 'Reconnect before using connected requests, synchronization or remote notifications.']],
+  ['update-app', 'Update ReturnBond', ['Open the official Download page.', 'Download the latest APK release.', 'Install the update over your existing app when Android allows it.']],
 ] as const;
 
-function scrollToId(id: string) {
-  document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
-}
-
-function useScrollReveal() {
+function SEO({ title, description, type = 'website', jsonLd }: { title: string; description: string; type?: string; jsonLd?: object | object[] }) {
+  const location = useLocation();
   useEffect(() => {
-    const elements = document.querySelectorAll('[data-reveal]');
-    if (!('IntersectionObserver' in window)) {
-      elements.forEach((el) => el.classList.add('is-visible'));
-      return;
-    }
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add('is-visible');
-            observer.unobserve(entry.target);
-          }
-        });
-      },
-      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
-    );
-    elements.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  });
+    document.title = title;
+    const setMeta = (selector: string, attributes: Record<string, string>, content: string) => {
+      let element = document.head.querySelector(selector) as HTMLMetaElement | null;
+      if (!element) { element = document.createElement('meta'); document.head.appendChild(element); }
+      Object.entries(attributes).forEach(([key, value]) => element?.setAttribute(key, value));
+      element.content = content;
+    };
+    const url = `${SITE_URL}${location.pathname === '/' ? '/' : location.pathname}`;
+    setMeta('meta[name="description"]', { name: 'description' }, description);
+    setMeta('meta[property="og:title"]', { property: 'og:title' }, title);
+    setMeta('meta[property="og:description"]', { property: 'og:description' }, description);
+    setMeta('meta[property="og:url"]', { property: 'og:url' }, url);
+    setMeta('meta[property="og:type"]', { property: 'og:type' }, type);
+    setMeta('meta[name="twitter:title"]', { name: 'twitter:title' }, title);
+    setMeta('meta[name="twitter:description"]', { name: 'twitter:description' }, description);
+    let canonical = document.head.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonical) { canonical = document.createElement('link'); canonical.rel = 'canonical'; document.head.appendChild(canonical); }
+    canonical.href = url;
+    const scriptId = 'page-structured-data';
+    document.getElementById(scriptId)?.remove();
+    if (jsonLd) { const script = document.createElement('script'); script.id = scriptId; script.type = 'application/ld+json'; script.textContent = JSON.stringify(jsonLd); document.head.appendChild(script); }
+    return () => document.getElementById(scriptId)?.remove();
+  }, [description, jsonLd, location.pathname, title, type]);
+  return null;
 }
 
-function useBodyScrollLock(locked: boolean) {
-  useEffect(() => {
-    if (locked) {
-      const original = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => { document.body.style.overflow = original; };
-    }
-  }, [locked]);
-}
+function Brand() { return <Link className="brand" to="/" aria-label="ReturnBond home"><span className="brand-mark"><HandCoins size={19} /></span><span>Return<span>Bond</span></span></Link>; }
+function ThemeSwitcher({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) { return <div className="theme-switcher" aria-label="Theme preference"><button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} aria-label="Light mode"><Sun size={15} /></button><button className={theme === 'system' ? 'active' : ''} onClick={() => setTheme('system')} aria-label="System theme"><Smartphone size={14} /></button><button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} aria-label="Dark mode"><Moon size={14} /></button></div>; }
 
-function App() {
-  const [page, setPage] = useState<Page>('home');
+function Layout({ children }: { children: ReactNode }) {
+  const location = useLocation();
   const [theme, setTheme] = useState<Theme>('system');
   const [menuOpen, setMenuOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const [donateMessage, setDonateMessage] = useState('');
-
-  useScrollReveal();
-  useBodyScrollLock(menuOpen);
-
-  const copyUpi = async () => {
-    await navigator.clipboard.writeText(UPI_ID);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2400);
-  };
-
-  const openDonation = () => {
-    setDonateMessage('If your UPI app did not open, copy the UPI ID below to pay from any supported app.');
-    window.location.href = UPI_URL;
-  };
-
-  const navigate = (target: Page, section?: string) => {
-    setPage(target);
-    setMenuOpen(false);
-    window.setTimeout(() => section && scrollToId(section), 20);
-  };
-
-  return (
-    <div className={`site-shell theme-${theme}`}>
-      <div className="announcement"><Sparkles size={14} /> Built for clear conversations and confident returns <span>•</span> Android 7.0+</div>
-      <header className="navbar">
-        <button className="brand" onClick={() => navigate('home')} aria-label="ReturnBond home">
-          <span className="brand-mark"><HandCoins size={19} /></span>
-          <span>Return<span>Bond</span></span>
-        </button>
-        <nav className={`nav-links ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation">
-          <button onClick={() => navigate('home', 'features')}>Features</button>
-          <button onClick={() => navigate('home', 'how-it-works')}>How it works</button>
-          <button onClick={() => navigate('home', 'download')}>Download</button>
-          <button onClick={() => navigate('home', 'about')}>About</button>
-          <a href={APK_URL} className="button button-primary mobile-menu-cta">Download ReturnBond <Download size={16} /></a>
-          <div className="mobile-theme-picker"><ThemeSwitcher theme={theme} setTheme={setTheme} /></div>
-        </nav>
-        <div className="nav-actions">
-          <ThemeSwitcher theme={theme} setTheme={setTheme} />
-          <button className="button button-small button-dark" onClick={() => navigate('home', 'download')}>Download <ArrowRight size={15} /></button>
-          <button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu" aria-expanded={menuOpen}>{menuOpen ? <X /> : <Menu />}</button>
-        </div>
-      </header>
-
-      {page === 'home' ? <HomePage navigate={navigate} copyUpi={copyUpi} copied={copied} openDonation={openDonation} donateMessage={donateMessage} /> : <LegalPage page={page} navigate={navigate} />}
-
-      <footer className="footer">
-        <div className="footer-top">
-          <div><button className="brand footer-brand" onClick={() => navigate('home')}><span className="brand-mark"><HandCoins size={19} /></span><span>Return<span>Bond</span></span></button><p className="footer-tagline">Give. Track. Return.</p><p className="footer-credit">Created &amp; Developed by Pijush Mandal<br /><span>Independent Developer</span></p></div>
-          <div className="footer-links"><div><strong>Explore</strong><button onClick={() => navigate('home', 'features')}>Features</button><button onClick={() => navigate('home', 'how-it-works')}>How it works</button><button onClick={() => navigate('home', 'download')}>Download</button><button onClick={() => navigate('home', 'about')}>About</button></div><div><strong>Information</strong><button onClick={() => navigate('privacy')}>Privacy Policy</button><button onClick={() => navigate('terms')}>Terms</button><button onClick={() => navigate('home', 'support')}>Support development</button></div></div>
-          <div className="footer-upi"><strong>Support development</strong><p>UPI ID</p><button onClick={copyUpi} className="upi-copy">{UPI_ID} <Clipboard size={14} /></button></div>
-        </div>
-        <div className="footer-bottom"><span>© 2026 ReturnBond. All rights reserved.</span><span>Made with care for better conversations.</span></div>
-      </footer>
-    </div>
-  );
+  useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
+  useEffect(() => setMenuOpen(false), [location.pathname]);
+  return <div className={`site-shell theme-${theme}`}>
+    <div className="announcement"><Sparkles size={14} /> Give. Track. Return. <span>•</span> Official Android website</div>
+    <header className="navbar"><Brand /><nav className={`nav-links ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation"><Link to="/features">Features</Link><Link to="/how-it-works">How it works</Link><Link to="/help">Help</Link><Link to="/about">About</Link><Link className="button button-primary mobile-menu-cta" to="/download">Download ReturnBond <Download size={16} /></Link><div className="mobile-theme-picker"><ThemeSwitcher theme={theme} setTheme={setTheme} /></div></nav><div className="nav-actions"><ThemeSwitcher theme={theme} setTheme={setTheme} /><Link className="button button-small button-dark" to="/download">Download <ArrowRight size={15} /></Link><button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu" aria-expanded={menuOpen}>{menuOpen ? <X /> : <Menu />}</button></div></header>
+    {children}
+    <Footer />
+  </div>;
 }
 
-function ThemeSwitcher({ theme, setTheme }: { theme: Theme; setTheme: (theme: Theme) => void }) {
-  return <div className="theme-switcher" aria-label="Theme preference"><button className={theme === 'light' ? 'active' : ''} onClick={() => setTheme('light')} aria-label="Light mode"><Sun size={15} /></button><button className={theme === 'system' ? 'active' : ''} onClick={() => setTheme('system')} aria-label="System theme"><Smartphone size={14} /></button><button className={theme === 'dark' ? 'active' : ''} onClick={() => setTheme('dark')} aria-label="Dark mode"><Moon size={14} /></button></div>;
-}
+function Footer() { return <footer className="footer"><div className="footer-top"><div><Brand /><p className="footer-tagline">Give. Track. Return.</p><p className="footer-credit">A personal lending and borrowing record manager.<br /><span>Created and developed by Pijush Mandal.</span></p></div><div className="footer-links"><div><strong>Explore</strong><Link to="/features">Features</Link><Link to="/how-it-works">How it works</Link><Link to="/download">Download</Link><Link to="/updates">Updates</Link></div><div><strong>Learn</strong><Link to="/faq">FAQ</Link><Link to="/help">Help center</Link><Link to="/about">About</Link><Link to="/contact">Contact</Link></div><div><strong>Trust</strong><Link to="/privacy">Privacy policy</Link><Link to="/data-safety">Data safety</Link><Link to="/terms">Terms</Link></div></div><div className="footer-upi"><strong>Support development</strong><p>UPI ID</p><button className="upi-copy" onClick={() => navigator.clipboard?.writeText(UPI_ID)}>{UPI_ID} <Clipboard size={14} /></button></div></div><div className="footer-bottom"><span>© 2026 ReturnBond. All rights reserved.</span><span>Version 1.8.4.5 • Android 7.0+</span></div></footer>; }
 
-function PhoneVisual({ large = false }: { large?: boolean }) {
-  return <div className={`phone-wrap ${large ? 'phone-large' : ''}`}><div className="phone-glow" /><img src={PHONE_IMAGE} alt="ReturnBond app dashboard shown inside a smartphone" loading="lazy" /></div>;
-}
+function PageHero({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) { return <section className="page-hero section-pad"><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{text}</p></section>; }
+function ButtonLink({ to, children, light = false }: { to: string; children: React.ReactNode; light?: boolean }) { return <Link className={`button ${light ? 'button-light' : 'button-primary'}`} to={to}>{children}<ArrowRight size={16} /></Link>; }
+function CTA() { return <section className="download-section section-pad"><div className="download-inner"><div className="eyebrow">Official Android release</div><h2>Keep the next return<br /><span>clear and simple.</span></h2><p>Download the official ReturnBond APK and start keeping better records.</p><ButtonLink to="/download" light>Download ReturnBond</ButtonLink><small>Version 1.8.4.5 • Version code 17 • Android 7.0+</small></div></section>; }
+function PhoneVisual({ large = false }: { large?: boolean }) { return <div className={`phone-wrap ${large ? 'phone-large' : ''}`}><div className="phone-glow" /><img src={PHONE_IMAGE} alt="ReturnBond app dashboard showing lending overview and quick actions" loading={large ? 'lazy' : 'eager'} /></div>; }
 
-function HomePage({ navigate, copyUpi, copied, openDonation, donateMessage }: { navigate: (page: Page, section?: string) => void; copyUpi: () => void; copied: boolean; openDonation: () => void; donateMessage: string }) {
-  return <main>
-    <section className="hero section-pad"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" /> Official ReturnBond website</div><h1>Give. Track.<br /><em>Return.</em></h1><p className="hero-lede">Keep track of everything you lend and borrow — from money to everyday items — with simple records, shared confirmations and reminders.</p><div className="hero-actions"><a href={APK_URL} className="button button-primary">Download ReturnBond <Download size={17} /></a><button className="button button-quiet" onClick={() => navigate('home', 'support')}>Support development <Heart size={16} /></button></div><div className="download-meta"><span><ShieldCheck size={15} /> Official APK</span><span>Version 1.8.4.5</span><span>Android 7.0+</span></div></div><div className="hero-visual"><div className="visual-label"><span>01</span><span>YOUR LENDING OVERVIEW</span></div><PhoneVisual /></div></section>
-    <section className="trust-strip"><span>Simple by design</span><span>Clear records</span><span>Shared confirmations</span><span>Offline-friendly</span></section>
-    <section className="intro-band section-pad" data-reveal><div className="intro-inner"><div className="eyebrow">What ReturnBond does</div><p>ReturnBond is a free Android app that helps you keep track of money you lend or borrow, physical items you share with others, repayments, return confirmations, due-date reminders and offline records — all in one place. It is built for everyday lending between people, not for banking or escrow.</p></div></section>
-    <section className="section-pad why-section" id="features" data-reveal><div className="section-heading"><div><div className="eyebrow">Why ReturnBond?</div><h2>Less uncertainty.<br /><span>More clarity.</span></h2></div><p>Whether it is money, a book, or something in between, ReturnBond gives every promise a place to live — and both sides a clearer way forward.</p></div><div className="benefit-grid">{benefits.map(({ icon: Icon, title, text }, i) => <article className="benefit-card" key={title} data-reveal style={{ transitionDelay: `${i * 80}ms` }}><div className="icon-tile"><Icon size={20} /></div><h3>{title}</h3><p>{text}</p></article>)}</div></section>
-    <section className="section-pad process-section" id="how-it-works" data-reveal><div className="section-heading centered"><div><div className="eyebrow">How ReturnBond works</div><h2>From promise to <span>peace of mind.</span></h2></div><p>A simple flow that keeps everyone on the same page, without making everyday lending feel complicated.</p></div><div className="steps">{[['01', 'Create', 'Record money or an item.', Wallet], ['02', 'Connect', 'Send a request using a ReturnBond ID.', Send], ['03', 'Track', 'Monitor payments, returns, due dates and status.', Timer], ['04', 'Confirm', 'Both sides confirm important actions.', CheckCircle2]].map(([number, title, text, Icon], i) => <div className="step" key={number as string} data-reveal style={{ transitionDelay: `${i * 100}ms` }}><span className="step-number">{number as string}</span><div className="step-icon"><Icon size={20} /></div><h3>{title as string}</h3><p>{text as string}</p></div>)}</div></section>
-    <section className="feature-section section-pad" data-reveal><div className="section-heading centered"><div><div className="eyebrow">Made for real life</div><h2>Everything you need to<br /><span>keep things clear.</span></h2></div></div><div className="feature-grid" id="feature-cards">{features.map(([title, text, Icon], i) => <article className="feature-card" key={title} data-reveal style={{ transitionDelay: `${(i % 2) * 80}ms` }}><Icon size={20} /><div><h3>{title}</h3><p>{text}</p></div><ArrowRight className="feature-arrow" size={17} /></article>)}</div></section>
-    <section className="preview-section section-pad" data-reveal><div className="preview-copy"><div className="eyebrow">Inside ReturnBond</div><h2>A calmer way to stay on top of what matters.</h2><p>The home screen puts your lending overview, quick actions and upcoming dues in one thoughtful view. Open your records, requests, alerts and settings whenever you need them.</p><div className="preview-list"><span><Check size={16} /> Net outstanding at a glance</span><span><Check size={16} /> Quick actions for money and items</span><span><Check size={16} /> Upcoming dues without the noise</span></div></div><div className="preview-visual"><PhoneVisual large /></div></section>
-    <section className="notification-section section-pad" data-reveal><div className="notification-card"><div className="notification-copy"><div className="eyebrow">Stay in the loop</div><h2>Important moments,<br /><span>right when they happen.</span></h2><p>ReturnBond can notify you about new and accepted requests, payment and return reports, confirmations, due dates, overdue records and completed transactions.</p></div><div className="notification-list">{['New lending requests', 'Payment confirmations', 'Item return reports', 'Due dates & overdue records', 'Completed transactions'].map((item, index) => <div key={item}><span>0{index + 1}</span>{item}<CheckCircle2 size={17} /></div>)}</div></div></section>
-    <section className="offline-section section-pad" data-reveal><div className="offline-icon"><CloudOff /></div><div><div className="eyebrow">Offline-first thinking</div><h2>Your records stay close.</h2><p>ReturnBond supports local record keeping, so your records and reminders can remain available even without an internet connection. Offline actions are not assumed to sync automatically.</p></div></section>
-    <section className="support-section section-pad" id="support" data-reveal><div className="support-card"><div><div className="eyebrow">Keep it independent</div><h2>Support development.</h2><p>ReturnBond is independently developed and maintained. If you find it useful, you can support its continued development.</p><div className="developer"><div className="avatar"><UserRound size={22} /></div><div><strong>Pijush Mandal</strong><span>Independent Developer</span></div></div></div><div className="support-actions"><span className="upi-label">UPI ID</span><button className="upi-id" onClick={copyUpi}>{UPI_ID}<Clipboard size={16} /></button>{copied && <div className="copied"><Check size={15} /> UPI ID copied</div>}<button className="button button-primary" onClick={openDonation}>Donate via UPI <Heart size={16} /></button>{donateMessage && <p className="donate-message">{donateMessage}</p>}</div></div></section>
-    <section className="about-section section-pad" id="about" data-reveal><div className="about-mark"><HandCoins size={28} /></div><div><div className="eyebrow">About ReturnBond</div><h2>Give. Track. Return.</h2><p>ReturnBond is a simple lending and borrowing management app designed to help people keep track of money and everyday items they lend or borrow.</p><div className="about-meta"><span>Created &amp; Developed by Pijush Mandal</span><span>Version 1.8.4.5</span><span>Android 7.0+</span></div></div></section>
-    <section className="faq-section section-pad" id="faq" data-reveal><div className="faq-inner"><div className="section-heading centered"><div><div className="eyebrow">Questions and answers</div><h2>ReturnBond <span>FAQ</span></h2></div><p>Clear answers about what ReturnBond does, how lending and borrowing records work, and what to expect from the app.</p></div><div className="faq-list">{faqs.map(([q, a], i) => <details className="faq-item" key={q} data-reveal style={{ transitionDelay: `${i * 60}ms` }}><summary><span>{q}</span><Plus className="faq-icon" size={18} /></summary><p>{a}</p></details>)}</div></div></section>
-    <section className="download-section section-pad" id="download" data-reveal><div className="download-inner"><div className="eyebrow">Ready when you are</div><h2>Keep the next return<br /><span>clear and simple.</span></h2><p>Download the official ReturnBond APK and start keeping better records.</p><a href={APK_URL} className="button button-light">Download ReturnBond <Download size={17} /></a><small>Official APK • Version 1.8.4.5 • Android 7.0+</small></div></section>
-  </main>;
-}
+function Home() { const [copied, setCopied] = useState(false); const copy = () => { navigator.clipboard?.writeText(UPI_ID); setCopied(true); window.setTimeout(() => setCopied(false), 2200); }; return <main>
+  <SEO title="ReturnBond – Money and Item Lending Tracker" description="Keep track of money you lend or borrow, physical items, repayments, returns, due dates and reminders with ReturnBond for Android." jsonLd={[{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'ReturnBond', url: SITE_URL }, { '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'ReturnBond', operatingSystem: 'Android', applicationCategory: 'FinanceApplication', url: SITE_URL, description: 'A personal money and item lending and borrowing record-management application.' }]} />
+  <section className="hero section-pad"><div className="hero-copy"><div className="eyebrow"><span className="eyebrow-dot" /> Official ReturnBond website</div><h1>Keep track of everything you <em>lend and borrow.</em></h1><p className="hero-lede">Manage money, track borrowed and lent items, monitor repayments, and stay informed with smart reminders — all in one place.</p><div className="hero-actions"><ButtonLink to="/download">Download ReturnBond</ButtonLink><Link className="button button-quiet" to="/features">Explore features <ArrowRight size={16} /></Link></div><div className="download-meta"><span><ShieldCheck size={15} /> Official APK</span><span>Version 1.8.4.5</span><span>Android 7.0+</span></div></div><div className="hero-visual"><div className="visual-label"><span>01</span><span>YOUR LENDING OVERVIEW</span></div><PhoneVisual /></div></section>
+  <div className="trust-strip"><span>Personal records</span><span>Shared confirmations</span><span>Local reminders</span><span>Offline-friendly</span></div>
+  <section className="intro-band section-pad"><div className="intro-inner"><div className="eyebrow">What ReturnBond does</div><p>ReturnBond is a personal record-management app for everyday lending between people. Record money and items, follow repayments and returns, connect with another user when needed, and keep important dates visible. It is not a bank, payment gateway or lending institution.</p></div></section>
+  <section className="section-pad why-section"><div className="section-heading"><div><div className="eyebrow">One clear place</div><h2>Less uncertainty.<br /><span>More clarity.</span></h2></div><p>Whether it is money, a book or something in between, ReturnBond gives every promise a place to live.</p></div><div className="benefit-grid">{features.slice(0, 6).map(({ icon: Icon, title, short }) => <Link className="benefit-card" key={title} to={`/features/${features.find((item) => item.title === title)?.slug}`}><div className="icon-tile"><Icon size={20} /></div><h3>{title}</h3><p>{short}</p></Link>)}</div></section>
+  <section className="process-section section-pad"><div className="section-heading centered"><div><div className="eyebrow">How ReturnBond works</div><h2>From promise to <span>peace of mind.</span></h2></div><p>A simple flow that keeps everyone on the same page, without making everyday lending complicated.</p></div><div className="steps">{[['01', 'Create', 'Record money or an item.', Wallet], ['02', 'Connect', 'Send a request when both people use ReturnBond.', Send], ['03', 'Track', 'Monitor payments, returns, due dates and status.', Timer], ['04', 'Confirm', 'Both sides confirm important actions.', CheckCircle2]].map(([number, title, text, Icon]) => <div className="step" key={number as string}><span className="step-number">{number as string}</span><div className="step-icon"><Icon size={20} /></div><h3>{title as string}</h3><p>{text as string}</p></div>)}</div></section>
+  <section className="preview-section section-pad"><div className="preview-copy"><div className="eyebrow">Inside ReturnBond</div><h2>A calmer way to stay on top of what matters.</h2><p>The home screen puts your lending overview, quick actions and upcoming dues in one thoughtful view.</p><div className="preview-list"><span><Check size={16} /> Net outstanding at a glance</span><span><Check size={16} /> Quick actions for money and items</span><span><Check size={16} /> Upcoming dues without the noise</span></div></div><div className="preview-visual"><PhoneVisual large /></div></section>
+  <section className="notification-section section-pad"><div className="notification-card"><div className="notification-copy"><div className="eyebrow">Two notification paths</div><h2>Important moments,<br /><span>right when they matter.</span></h2><p>Local Android reminders help with due dates and recurring alerts. Firebase Cloud Messaging is intended for applicable remote events around connected activity. They serve different purposes.</p><ButtonLink to="/features/notifications">Understand notifications</ButtonLink></div><div className="notification-list">{['Due-date warnings', 'Payment reports', 'Return confirmations', 'Connected requests', 'Overdue records'].map((item, index) => <div key={item}><span>0{index + 1}</span>{item}<CheckCircle2 size={17} /></div>)}</div></div></section>
+  <section className="offline-section section-pad"><div className="offline-icon"><CloudOff /></div><div><div className="eyebrow">Hybrid architecture</div><h2>Your records stay close.</h2><p>Supported personal records and local reminder scheduling can remain available without internet. Connected transactions, cloud synchronization and remote notifications require connectivity.</p><ButtonLink to="/features/offline-mode">Learn about offline mode</ButtonLink></div></section>
+  <section className="support-section section-pad"><div className="support-card"><div><div className="eyebrow">Keep it independent</div><h2>Support development.</h2><p>ReturnBond is independently developed and maintained by Pijush Mandal. If you find it useful, you can support its continued development.</p><div className="developer"><div className="avatar"><UserRound size={22} /></div><div><strong>Pijush Mandal</strong><span>Independent Developer</span></div></div></div><div className="support-actions"><span className="upi-label">UPI ID</span><button className="upi-id" onClick={copy}>{UPI_ID}<Clipboard size={16} /></button>{copied && <div className="copied"><Check size={15} /> UPI ID copied</div>}<a className="button button-primary" href={UPI_URL}>Donate via UPI <Heart size={16} /></a></div></div></section>
+  <section className="faq-section section-pad"><div className="faq-inner"><div className="section-heading centered"><div><div className="eyebrow">Questions and answers</div><h2>ReturnBond <span>FAQ</span></h2></div><p>Clear answers about records, reminders, Firebase and offline use.</p></div><FAQList items={faqs.slice(0, 6)} /><Link className="text-link" to="/faq">See all frequently asked questions <ArrowRight size={15} /></Link></div></section>
+  <CTA />
+</main>; }
 
-function LegalPage({ page, navigate }: { page: 'privacy' | 'terms'; navigate: (page: Page, section?: string) => void }) {
-  const privacy = page === 'privacy';
-  return <main className="legal-page"><div className="legal-hero section-pad"><button className="back-link" onClick={() => navigate('home')}><ArrowRight size={16} className="back-arrow" /> Back to ReturnBond</button><div className="eyebrow">ReturnBond information</div><h1>{privacy ? 'Privacy Policy' : 'Terms of Service'}</h1><p>Simple, plain-language information for ReturnBond users.</p><span className="last-updated">Last updated September 2026</span></div><article className="legal-content">{privacy ? <><h2>Privacy at a glance</h2><p>ReturnBond is designed to help you manage lending and borrowing records. We aim to collect and use only the information needed for the app to work.</p><h2>Information and services</h2><p>Depending on how you use the Android app, this can include account information, authentication details, transaction records, due dates, notifications and device information required for app functionality. Firebase services may be used by the ReturnBond Android app where applicable for authentication, data services and notifications.</p><h2>Your control</h2><p>You remain in control of your records. You can review your information and request account deletion through the available app support channels. We do not sell personal data.</p><h2>Security and third parties</h2><p>Reasonable safeguards are used to protect information. Third-party services, including Firebase where applicable, process information only to provide services used by the app and under their own policies. No online service can promise absolute security.</p><h2>Questions</h2><p>For questions about privacy or account deletion, contact the developer through the official ReturnBond support channel.</p></> : <><h2>Purpose</h2><p>ReturnBond helps people keep personal records of money and items they lend or borrow. It is a record-keeping tool, not a bank, escrow service or legal adviser.</p><h2>Your responsibility</h2><p>You are responsible for using accurate records, protecting your account, and checking details before confirming a payment, request or return. Lending and borrowing disputes remain between the people involved.</p><h2>Payments and items</h2><p>Users remain responsible for payment obligations, item care and item returns. ReturnBond does not guarantee that another person will pay, return an item or agree with a record.</p><h2>Acceptable use</h2><p>Do not misuse the service, impersonate another person, submit unlawful content, interfere with the app, or use it to deceive, harass or harm others.</p><h2>Availability and changes</h2><p>The service may change, be interrupted or become unavailable. We may update these terms as ReturnBond evolves. Continued use after an update means you accept the updated terms.</p><h2>Limitation</h2><p>To the extent allowed by law, ReturnBond and its independent developer are not responsible for losses arising from inaccurate records, lending disputes, payment failures, item loss or service interruptions.</p></>}</article></main>;
-}
+function FAQList({ items }: { items: readonly FAQItem[] }) { return <div className="faq-list">{items.map(([q, a]) => <details className="faq-item" key={q}><summary><span>{q}</span><ChevronDown className="faq-icon" size={18} /></summary><p>{a}</p></details>)}</div>; }
 
-export default App;
+function FeaturesPage() { return <main><SEO title="ReturnBond Features – Lending, Borrowing and Reminders" description="Explore ReturnBond features for money lending, borrowing, item tracking, connected transactions, payment progress, reminders and offline support." /><PageHero eyebrow="The ReturnBond toolkit" title="Everything you need to keep lending clear." text="ReturnBond helps you record, revisit and communicate the details behind everyday money and item lending." /><section className="section-pad card-grid feature-directory">{features.map(({ slug, title, short, icon: Icon }) => <Link className="feature-card feature-directory-card" to={`/features/${slug}`} key={slug}><Icon size={22} /><div><h2>{title}</h2><p>{short}</p></div><ArrowRight className="feature-arrow" size={17} /></Link>)}</section><CTA /></main>; }
+
+function FeaturePage({ slug }: { slug: string }) { const feature = features.find((item) => item.slug === slug); if (!feature) return <Navigate to="/404" replace />; const Icon = feature.icon; return <main><SEO title={`${feature.title} | ReturnBond`} description={`${feature.short} Learn how ${feature.title.toLowerCase()} works in ReturnBond.`} jsonLd={{ '@context': 'https://schema.org', '@type': 'Article', headline: feature.title, description: feature.intro, author: { '@type': 'Person', name: 'Pijush Mandal' } }} /><PageHero eyebrow="ReturnBond feature" title={feature.title} text={feature.intro} /><section className="detail-layout section-pad"><article className="detail-copy"><div className="large-icon"><Icon size={28} /></div><h2>How it works</h2><p>{feature.intro} Add the details that matter, then return to the record as the situation changes. Where another ReturnBond user is involved, connected actions can create a clearer shared history.</p><h2>What you can do</h2><ul className="check-list">{feature.points.map((point) => <li key={point}><CheckCircle2 size={18} />{point}</li>)}</ul><div className="note-box"><ShieldCheck size={19} /><span>ReturnBond records and tracks information. It does not transfer money, collect repayments or guarantee outcomes.</span></div></article><aside className="detail-aside"><PhoneVisual large /><h3>Explore related features</h3><div className="related-links">{features.filter((item) => item.slug !== slug).slice(0, 4).map((item) => <Link to={`/features/${item.slug}`} key={item.slug}>{item.title}<ArrowRight size={14} /></Link>)}</div></aside></section><CTA /></main>; }
+
+function HowItWorks() { const steps = [['01', 'Install ReturnBond', 'Download the official Android APK and open the app.'], ['02', 'Create or access an account', 'Use account functionality where it is required, while personal record features can remain independent where supported.'], ['03', 'Create a record', 'Choose money lending, money borrowing, item lending or item borrowing, then add the relevant details.'], ['04', 'Connect when useful', 'Use connected transactions when the other person also uses ReturnBond.'], ['05', 'Track progress', 'Review payments, reports, confirmations, due dates and transaction status.'], ['06', 'Complete the record', 'Record completed repayments and item returns so the history stays clear.']]; return <main><SEO title="How ReturnBond Works" description="Learn how ReturnBond helps you create lending and borrowing records, connect transactions, track repayments and confirm returns." /><PageHero eyebrow="A clear everyday flow" title="From record to return." text="ReturnBond keeps personal lending simple while giving connected transactions a shared place for important updates." /><section className="section-pad journey">{steps.map(([number, title, text]) => <article className="journey-step" key={number}><span>{number}</span><div><h2>{title}</h2><p>{text}</p></div></article>)}</section><CTA /></main>; }
+
+function FAQPage() { const [query, setQuery] = useState(''); const groups = useMemo((): { title: string; items: FAQItem[] }[] => { const filtered = faqs.filter(([q, a]) => `${q} ${a}`.toLowerCase().includes(query.toLowerCase())); return [{ title: 'General and records', items: filtered.slice(0, 6) }, { title: 'Reminders and notifications', items: filtered.slice(6, 10) }, { title: 'Offline, accounts and support', items: filtered.slice(10) }].filter((group) => group.items.length); }, [query]); return <main><SEO title="ReturnBond FAQ" description="Answers about ReturnBond money and item records, repayments, reminders, Firebase notifications, offline support and downloads." jsonLd={{ '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: faqs.map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })) }} /><PageHero eyebrow="Answers before you begin" title="Frequently asked questions." text="Straightforward information about what ReturnBond does, how reminders work and what needs an internet connection." /><section className="section-pad faq-directory"><label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search questions" aria-label="Search questions" /></label>{groups.map((group) => <div className="faq-group" key={group.title}><h2>{group.title}</h2><FAQList items={group.items} /></div>)}</section></main>; }
+
+function HelpPage() { const [query, setQuery] = useState(''); const visible = helpArticles.filter(([, title, steps]) => `${title} ${steps.join(' ')}`.toLowerCase().includes(query.toLowerCase())); return <main><SEO title="ReturnBond Help Center" description="Step-by-step ReturnBond tutorials for creating records, connected requests, payment confirmations, reminders, offline use and app updates." /><PageHero eyebrow="Practical guidance" title="Help center." text="Short tutorials for the everyday tasks you can do in ReturnBond." /><section className="section-pad help-directory"><label className="search-box"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search help articles" aria-label="Search help articles" /></label><div className="article-grid">{visible.map(([slug, title, steps], index) => <Link className="article-card" to={`/help/${slug}`} key={slug}><div className="article-number">{String(index + 1).padStart(2, '0')}</div><h2>{title}</h2><p>{steps[0]}</p><span>Read tutorial <ArrowRight size={14} /></span></Link>)}</div></section></main>; }
+
+function HelpArticle({ slug }: { slug: string }) { const article = helpArticles.find(([itemSlug]) => itemSlug === slug); if (!article) return <Navigate to="/404" replace />; const [, title, steps] = article; return <main><SEO title={`${title} | ReturnBond Help`} description={`${title} step-by-step guide for ReturnBond users.`} type="article" jsonLd={{ '@context': 'https://schema.org', '@type': 'Article', headline: title, description: steps.join(' '), author: { '@type': 'Person', name: 'Pijush Mandal' } }} /><PageHero eyebrow="ReturnBond help" title={title} text="Follow these steps, then check the troubleshooting notes if your result does not look right." /><article className="help-article section-pad"><div className="article-body"><h2>Steps</h2><ol>{steps.map((step) => <li key={step}>{step}</li>)}</ol><h2>Things to check</h2><p>Keep your app updated and review the relevant permissions or record details when something does not behave as expected. Connected actions require internet access, and Android can delay reminders because of battery restrictions or notification settings.</p><h2>Related help</h2><div className="related-links">{helpArticles.filter(([itemSlug]) => itemSlug !== slug).slice(0, 4).map(([itemSlug, itemTitle]) => <Link to={`/help/${itemSlug}`} key={itemSlug}>{itemTitle}<ArrowRight size={14} /></Link>)}</div></div></article></main>; }
+
+function DownloadPage() { return <main><SEO title="Download ReturnBond for Android" description="Download the official ReturnBond APK for Android. Current release 1.8.4.5, version code 17, compatible with Android 7.0 and higher." /><PageHero eyebrow="Official APK" title="Download ReturnBond." text="Get the official Android release from the verified ReturnBond download source." /><section className="section-pad download-panel"><div className="download-panel-copy"><div className="large-icon"><Download size={28} /></div><h2>ReturnBond 1.8.4.5</h2><p>Version code 17 · Android 7.0 and higher</p><a className="button button-primary" href={APK_URL}>Download APK <Download size={17} /></a><small>Source: official ReturnBond GitHub release.</small></div><div className="install-card"><h3>Installation</h3><ol><li>Download the APK to your Android device.</li><li>Open it and allow installation from your chosen source if Android asks.</li><li>Install the update over your existing ReturnBond app.</li></ol><p>If an installation fails, check available storage, Android compatibility and whether an older package is already installed.</p></div></section><section className="section-pad info-links"><Link to="/privacy">Read the privacy policy <ArrowRight size={15} /></Link><Link to="/updates">See version history <ArrowRight size={15} /></Link><Link to="/help/update-app">How to update the app <ArrowRight size={15} /></Link></section></main>; }
+
+function UpdatesPage() { return <main><SEO title="ReturnBond Updates and Version History" description="See the verified ReturnBond release information and current Android version." /><PageHero eyebrow="Release information" title="Version history." text="A concise record of the release information currently provided by ReturnBond." /><section className="section-pad updates-list"><article className="release-card"><div className="release-top"><span className="release-version">1.8.4.5</span><span>Version code 17</span><span>Current release</span></div><h2>Performance and stability</h2><ul className="check-list"><li><CheckCircle2 size={18} />Completed and settled payment record personal deletion</li><li><CheckCircle2 size={18} />Performance and smoothness optimizations</li><li><CheckCircle2 size={18} />General bug fixes and stability improvements</li></ul><p className="muted-note">A public release date is not included in the current release metadata.</p></article></section></main>; }
+
+function InfoPage({ kind }: { kind: 'privacy' | 'data-safety' | 'about' | 'contact' | 'terms' }) { const content = ({ privacy: ['Privacy policy', 'How ReturnBond handles records and service information.', [['Services used', 'The Android app may use Firebase Authentication, Cloud Firestore and Firebase Cloud Messaging for account, cloud-connected and notification functionality.'], ['Local records', 'The app uses a local Room database for supported personal records and local reminder functionality.'], ['Your choices', 'Notification permissions are controlled through Android. For account or deletion questions, use the support route available through the app.'], ['Important limits', 'This page does not promise end-to-end encryption, absolute security or a specific retention period where the current product information does not confirm one.']]], 'data-safety': ['Data safety', 'A plain-language view of local storage, cloud services and notifications.', [['On your device', 'Supported personal records and local reminder schedules can be stored on the device using the Android app.'], ['In the cloud', 'Firebase services may handle authentication, cloud-connected transaction information and notification-related data where the feature requires it.'], ['Notifications', 'Local Android reminders and remote Firebase Cloud Messaging notifications are separate systems. Android permissions and device settings affect delivery.'], ['Deletion and retention', 'Account and data deletion support should be requested through the available official app support route. Specific retention periods are not stated here because they have not been verified.']]], about: ['About ReturnBond', 'A simpler way to keep everyday lending conversations clear.', [['Why it exists', 'Money and item lending often relies on memory and scattered messages. ReturnBond gives those details a dedicated personal record.'], ['Product philosophy', 'Keep the important details visible, make confirmations understandable and avoid pretending to be a bank or payment service.'], ['Who develops it', 'ReturnBond is created and developed independently by Pijush Mandal.']]], contact: ['Contact and support', 'Use the official support route when you need help with ReturnBond.', [['App support', 'For account assistance, bug reports and deletion requests, use the support channel provided inside the ReturnBond app.'], ['Feedback', 'Feature ideas and workflow feedback are welcome through the official support route.'], ['Before contacting support', 'Include your Android version, ReturnBond version and a short description of what happened. Do not share passwords or private payment details.']]], terms: ['Terms of service', 'Plain-language terms for using ReturnBond.', [['Purpose', 'ReturnBond is a record-management tool for money and items people lend or borrow. It is not a bank, escrow service, payment processor or legal adviser.'], ['Your responsibility', 'You are responsible for accurate records, account security and checking details before confirming a request, payment report or return.'], ['Availability', 'The app and its services may change or be interrupted. ReturnBond does not guarantee another person will pay or return an item.']]] } as Record<'privacy' | 'data-safety' | 'about' | 'contact' | 'terms', [string, string, InfoBlock[]]>)[kind]; return <main><SEO title={`${content[0]} | ReturnBond`} description={content[1]} /><PageHero eyebrow="ReturnBond information" title={content[0]} text={content[1]} /><article className="legal-content info-content">{content[2].map(([heading, text]) => <section key={heading}><h2>{heading}</h2><p>{text}</p></section>)}</article></main>; }
+
+function NotFound() { return <main><PageHero eyebrow="404" title="This page is not in the record." text="The page you are looking for may have moved. Return to the homepage or explore the features." /><div className="not-found-actions section-pad"><ButtonLink to="/">Back to home</ButtonLink><ButtonLink to="/features">Explore features</ButtonLink></div></main>; }
+
+function AppRoutes() { return <Layout><Routes><Route path="/" element={<Home />} /><Route path="/features" element={<FeaturesPage />} />{features.map(({ slug }) => <Route path={`/features/${slug}`} element={<FeaturePage slug={slug} />} key={slug} />)}<Route path="/how-it-works" element={<HowItWorks />} /><Route path="/faq" element={<FAQPage />} /><Route path="/help" element={<HelpPage />} />{helpArticles.map(([slug]) => <Route path={`/help/${slug}`} element={<HelpArticle slug={slug} />} key={slug} />)}<Route path="/download" element={<DownloadPage />} /><Route path="/updates" element={<UpdatesPage />} /><Route path="/privacy" element={<InfoPage kind="privacy" />} /><Route path="/data-safety" element={<InfoPage kind="data-safety" />} /><Route path="/about" element={<InfoPage kind="about" />} /><Route path="/contact" element={<InfoPage kind="contact" />} /><Route path="/terms" element={<InfoPage kind="terms" />} /><Route path="/404" element={<NotFound />} /><Route path="*" element={<NotFound />} /></Routes></Layout>; }
+
+export default function App() { return <BrowserRouter><AppRoutes /></BrowserRouter>; }

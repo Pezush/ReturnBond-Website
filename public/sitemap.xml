@@ -1,6 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://returnbond-official.vercel.app/</loc>
-  </url>
+  <url><loc>https://returnbond-official.vercel.app/</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/how-it-works</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/faq</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/help</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/download</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/updates</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/privacy</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/data-safety</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/about</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/contact</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/terms</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/money-lending</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/money-borrowing</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/item-lending</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/item-borrowing</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/connected-transactions</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/payment-tracking</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/reminders</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/notifications</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/offline-mode</loc></url>
+  <url><loc>https://returnbond-official.vercel.app/features/transaction-history</loc></url>
 </urlset>
