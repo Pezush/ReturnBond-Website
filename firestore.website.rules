@@ -1,0 +1,181 @@
+// =============================================================================
+// ReturnBond Website — Cloud Firestore Security Rules Snippet
+// Firebase Project ID: returnbond-7c6ae
+//
+// IMPORTANT NON-DESTRUCTIVE MERGE INSTRUCTIONS:
+// Do NOT delete or overwrite your existing Android app `users` or `requests`
+// collection rules in `returnbond-7c6ae`. Instead, open:
+//   Firebase Console -> returnbond-7c6ae -> Firestore Database -> Rules
+// and paste the helper functions + `website_*` match blocks below INSIDE your
+// existing `match /databases/{database}/documents { ... }` block, right below
+// your existing `users` and `requests` rules.
+// =============================================================================
+
+/*
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -------------------------------------------------------------------------
+    // KEEP YOUR EXISTING ANDROID APP RULES (`users`, `requests`, etc.) HERE!
+    // -------------------------------------------------------------------------
+*/
+
+    // --- ReturnBond Website Helper Functions ---
+    function isWebsiteAdmin() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/website_admins/$(request.auth.uid));
+    }
+
+    function isManualApprovalRequired() {
+      return exists(/databases/$(database)/documents/website_config/moderation)
+        && get(/databases/$(database)/documents/website_config/moderation).data.requireManualApproval == true;
+    }
+
+    function isSuspiciousReviewContent(text) {
+      return text != null
+        && text.matches('(?is).*(https?://|www\\.|<script|<a\\s).*');
+    }
+
+    function hasValidRateLimitWrite(lockId) {
+      return getAfter(/databases/$(database)/documents/website_rate_limits/$(lockId)).data.lastSubmittedAt == request.time;
+    }
+
+    // 1. Website Admin Allowlist (client writes strictly forbidden; add UID in Firebase Console)
+    match /website_admins/{uid} {
+      allow get: if request.auth != null && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // 2. Website Moderation Settings
+    match /website_config/{docId} {
+      allow get: if docId == 'moderation';
+      allow list: if false;
+      allow create, update: if docId == 'moderation'
+        && isWebsiteAdmin()
+        && request.resource.data.keys().hasOnly(['requireManualApproval', 'updatedAt'])
+        && request.resource.data.requireManualApproval is bool
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if false;
+    }
+
+    // 3. Server-Side Cooldown Locks (enforces 24h per-client review limit & 2m feedback limit)
+    match /website_rate_limits/{limitId} {
+      allow read: if isWebsiteAdmin();
+      allow create: if (
+          (request.resource.data.kind == 'review' && limitId.matches('^review_[a-f0-9]{64}$'))
+          || (request.resource.data.kind == 'feedback' && limitId.matches('^feedback_[a-f0-9]{64}$'))
+        )
+        && request.resource.data.keys().hasOnly(['kind', 'lastSubmittedAt'])
+        && request.resource.data.lastSubmittedAt == request.time;
+      allow update: if limitId.matches('^(review|feedback)_[a-f0-9]{64}$')
+        && request.resource.data.keys().hasOnly(['kind', 'lastSubmittedAt'])
+        && request.resource.data.kind == resource.data.kind
+        && request.resource.data.lastSubmittedAt == request.time
+        && (
+          (resource.data.kind == 'review' && request.time > resource.data.lastSubmittedAt + duration.value(24, 'h'))
+          || (resource.data.kind == 'feedback' && request.time > resource.data.lastSubmittedAt + duration.value(2, 'm'))
+        );
+      allow delete: if isWebsiteAdmin();
+    }
+
+    // 4. Public Website Ratings & Reviews (no website login required to submit)
+    match /website_reviews/{reviewId} {
+      // Public visitors can ONLY read approved reviews; admins can read all
+      allow read: if resource.data.status == 'approved' || isWebsiteAdmin();
+
+      // Validated creation with mandatory 24-hour atomic rate-limit lock
+      allow create: if request.resource.data.keys().hasOnly([
+          'rating', 'displayName', 'reviewText', 'status',
+          'appVersion', 'tokenHash', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && (
+          request.resource.data.displayName == null
+          || (
+            request.resource.data.displayName is string
+            && request.resource.data.displayName.size() >= 1
+            && request.resource.data.displayName.size() <= 60
+          )
+        )
+        && (
+          request.resource.data.reviewText == null
+          || (
+            request.resource.data.reviewText is string
+            && request.resource.data.reviewText.size() >= 2
+            && request.resource.data.reviewText.size() <= 1500
+          )
+        )
+        && (
+          request.resource.data.appVersion == null
+          || (
+            request.resource.data.appVersion is string
+            && request.resource.data.appVersion.size() <= 32
+          )
+        )
+        && request.resource.data.tokenHash is string
+        && request.resource.data.tokenHash.matches('^[a-f0-9]{64}$')
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.status in ['approved', 'pending']
+        && (!isManualApprovalRequired() || request.resource.data.status == 'pending')
+        && (!isSuspiciousReviewContent(request.resource.data.reviewText) || request.resource.data.status == 'pending')
+        && hasValidRateLimitWrite('review_' + request.resource.data.tokenHash);
+
+      // Only authorized website admins can approve, hide, or delete reviews
+      allow update: if isWebsiteAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status in ['pending', 'approved', 'hidden']
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isWebsiteAdmin();
+    }
+
+    // 5. Private Website Feedback (strictly write-only for public; admin-only read/update/delete)
+    match /website_feedback/{feedbackId} {
+      allow read: if isWebsiteAdmin();
+
+      allow create: if request.resource.data.keys().hasOnly([
+          'category', 'senderName', 'message', 'isResolved',
+          'appVersion', 'tokenHash', 'createdAt', 'updatedAt'
+        ])
+        && request.resource.data.category in ['Bug Report', 'Feature Request', 'General Suggestion', 'Other']
+        && (
+          request.resource.data.senderName == null
+          || (
+            request.resource.data.senderName is string
+            && request.resource.data.senderName.size() >= 1
+            && request.resource.data.senderName.size() <= 60
+          )
+        )
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 10
+        && request.resource.data.message.size() <= 3000
+        && request.resource.data.isResolved == false
+        && (
+          request.resource.data.appVersion == null
+          || (
+            request.resource.data.appVersion is string
+            && request.resource.data.appVersion.size() <= 32
+          )
+        )
+        && request.resource.data.tokenHash is string
+        && request.resource.data.tokenHash.matches('^[a-f0-9]{64}$')
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && hasValidRateLimitWrite('feedback_' + request.resource.data.tokenHash);
+
+      allow update: if isWebsiteAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isResolved', 'updatedAt'])
+        && request.resource.data.isResolved is bool
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if isWebsiteAdmin();
+    }
+
+/*
+  }
+}
+*/

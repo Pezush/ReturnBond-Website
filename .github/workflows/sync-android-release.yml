@@ -1,0 +1,75 @@
+name: Sync ReturnBond Android Release
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate release detection without committing changes'
+        required: false
+        default: false
+        type: boolean
+      target_tag:
+        description: 'Optional GitHub release tag to inspect (leave blank for latest stable)'
+        required: false
+        default: ''
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: sync-returnbond-android-release
+  cancel-in-progress: false
+
+jobs:
+  sync-release:
+    name: Poll Pezush/ReturnBond & Sync Metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Check latest published stable Android release
+        id: sync
+        env:
+          DRY_RUN: ${{ (inputs.dry_run == true || github.ref != 'refs/heads/main') && 'true' || 'false' }}
+          TARGET_TAG: ${{ inputs.target_tag || '' }}
+        run: node scripts/sync-release.mjs
+
+      - name: Verify tests, TypeScript, and production Vite build
+        if: (steps.sync.outputs.updated == 'true' && inputs.dry_run != true) || github.event_name == 'workflow_dispatch'
+        run: |
+          npm ci
+          node --test scripts/sync-release.test.mjs
+          npm run typecheck
+          npm run build
+
+      - name: Commit and push verified release metadata to main
+        if: github.ref == 'refs/heads/main' && steps.sync.outputs.updated == 'true' && inputs.dry_run != true
+        env:
+          NEW_VERSION_NAME: ${{ steps.sync.outputs.version_name }}
+          NEW_VERSION_CODE: ${{ steps.sync.outputs.version_code }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/update.json src/data/releaseMetadata.json
+          if git diff --cached --quiet; then
+            echo "No staged changes in metadata files; skipping commit."
+            exit 0
+          fi
+          git commit -m "chore(release): sync ReturnBond v${NEW_VERSION_NAME} (code ${NEW_VERSION_CODE})"
+          git pull --rebase origin main
+          git push origin HEAD:main
