@@ -11,11 +11,14 @@ import {
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
   type DocumentData,
   type Firestore,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { latestRelease } from '../releaseConfig';
 import {
@@ -86,12 +89,54 @@ export interface PrivateFeedbackItem {
   created_at: string;
 }
 
+export const HOMEPAGE_REVIEWS_LIMIT = 5;
+export const ALL_REVIEWS_PAGE_SIZE = 50;
+
+export interface ReviewsPageCursor {
+  docSnapshot: QueryDocumentSnapshot<DocumentData> | null;
+  offset: number;
+}
+
+export interface ApprovedReviewsPageResult {
+  reviews: PublicReview[];
+  hasMore: boolean;
+  nextCursor: ReviewsPageCursor | null;
+}
+
 export const EMPTY_RATING_SUMMARY: RatingSummary = {
   averageRating: 0,
   totalReviews: 0,
   writtenReviewsCount: 0,
   distribution: { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 },
 };
+
+export function dedupeReviewsById(items: readonly PublicReview[]): PublicReview[] {
+  const seen = new Set<string>();
+  const result: PublicReview[] = [];
+  for (const item of items) {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      result.push(item);
+    }
+  }
+  return result;
+}
+
+export function shouldShowViewAllReviews(params: {
+  listLoading: boolean;
+  hasMoreMatching: boolean;
+  totalApprovedReviews: number;
+  displayedCount: number;
+  starFilter: number | null;
+}): boolean {
+  if (params.listLoading) return false;
+  if (params.hasMoreMatching) return true;
+  const knownTotal = Math.max(
+    params.totalApprovedReviews,
+    params.starFilter === null ? params.displayedCount : 0
+  );
+  return knownTotal > HOMEPAGE_REVIEWS_LIMIT;
+}
 
 function ensureFirestore(): Firestore {
   if (!isFirebaseConfigured || !firestoreDb) {
@@ -112,14 +157,20 @@ function timestampToIso(value: unknown): string {
     'seconds' in value &&
     typeof (value as { seconds: unknown }).seconds === 'number'
   ) {
-    return new Date((value as { seconds: number }).seconds * 1000).toISOString();
+    const secs = (value as { seconds: number }).seconds;
+    const nanos =
+      'nanoseconds' in value && typeof (value as { nanoseconds: unknown }).nanoseconds === 'number'
+        ? (value as { nanoseconds: number }).nanoseconds
+        : 0;
+    return new Date(secs * 1000 + Math.floor(nanos / 1_000_000)).toISOString();
   }
-  if (typeof value === 'string') return value;
-  return new Date().toISOString();
+  if (typeof value === 'string' && value.trim()) return value;
+  return '';
 }
 
 function timestampToMs(value: unknown): number {
   const iso = timestampToIso(value);
+  if (!iso) return 0;
   const parsed = Date.parse(iso);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -224,50 +275,49 @@ export async function fetchPublicRatingSummary(): Promise<RatingSummary> {
 }
 
 export async function fetchApprovedReviewsPage(options: {
-  offset: number;
   limit: number;
   starFilter?: number | null;
-}): Promise<{ reviews: PublicReview[]; totalMatching: number }> {
+  cursor?: ReviewsPageCursor | null;
+}): Promise<ApprovedReviewsPageResult> {
   const db = ensureFirestore();
-  const { offset, limit, starFilter } = options;
+  const safeLimit = Math.max(1, Math.min(100, Math.round(options.limit)));
+  const currentOffset = Math.max(0, options.cursor?.offset ?? 0);
+  const starFilter = options.starFilter ?? null;
   const reviewsRef = collection(db, REVIEWS_COLLECTION);
 
-  const hasValidStar = Boolean(starFilter && starFilter >= 1 && starFilter <= 5);
+  const hasValidStar = typeof starFilter === 'number' && starFilter >= 1 && starFilter <= 5;
 
   try {
-    const countQuery = hasValidStar
-      ? query(reviewsRef, where('status', '==', 'approved'), where('rating', '==', starFilter))
-      : query(reviewsRef, where('status', '==', 'approved'));
-
-    const totalSnap = await getCountFromServer(countQuery);
-    const totalMatching = totalSnap.data().count;
-
-    if (totalMatching === 0) {
-      return { reviews: [], totalMatching: 0 };
-    }
-
     try {
-      const indexedQuery = hasValidStar
-        ? query(
-            reviewsRef,
-            where('status', '==', 'approved'),
-            where('rating', '==', starFilter),
-            orderBy('createdAt', 'desc'),
-            firestoreLimit(offset + limit)
-          )
-        : query(
-            reviewsRef,
-            where('status', '==', 'approved'),
-            orderBy('createdAt', 'desc'),
-            firestoreLimit(offset + limit)
-          );
+      const constraints: QueryConstraint[] = [where('status', '==', 'approved')];
+      if (hasValidStar) {
+        constraints.push(where('rating', '==', starFilter));
+      }
+      constraints.push(orderBy('createdAt', 'desc'));
+      if (options.cursor?.docSnapshot) {
+        constraints.push(startAfter(options.cursor.docSnapshot));
+      }
+      constraints.push(firestoreLimit(safeLimit + 1));
 
-      const snap = await getDocs(indexedQuery);
-      const sliced = snap.docs
-        .slice(offset, offset + limit)
-        .map((docSnap) => mapReviewDoc(docSnap.id, docSnap.data()));
+      const snap = await getDocs(query(reviewsRef, ...constraints));
+      const hasMore = snap.docs.length > safeLimit;
+      const pageDocs = hasMore ? snap.docs.slice(0, safeLimit) : snap.docs;
+      const reviews = dedupeReviewsById(
+        pageDocs.map((docSnap) => mapReviewDoc(docSnap.id, docSnap.data()))
+      );
+      const lastDoc = pageDocs.length > 0 ? pageDocs[pageDocs.length - 1] : null;
 
-      return { reviews: sliced, totalMatching };
+      return {
+        reviews,
+        hasMore,
+        nextCursor:
+          hasMore && lastDoc
+            ? {
+                docSnapshot: lastDoc,
+                offset: currentOffset + reviews.length,
+              }
+            : null,
+      };
     } catch (indexErr) {
       const errCode =
         indexErr && typeof indexErr === 'object' && 'code' in indexErr
@@ -277,19 +327,40 @@ export async function fetchApprovedReviewsPage(options: {
         throw indexErr;
       }
 
-      // Automatic zero-composite-index fallback (uses built-in single-field indexes)
-      const fallbackSnap = await getDocs(query(countQuery, firestoreLimit(250)));
-      const sorted = fallbackSnap.docs
-        .map((docSnap) => ({
-          ms: timestampToMs(docSnap.data().createdAt),
-          item: mapReviewDoc(docSnap.id, docSnap.data()),
-        }))
-        .sort((a, b) => b.ms - a.ms)
-        .map((entry) => entry.item);
+      // Automatic zero-composite-index fallback using built-in single-field equality indexes
+      const fallbackQuery = hasValidStar
+        ? query(
+            reviewsRef,
+            where('status', '==', 'approved'),
+            where('rating', '==', starFilter),
+            firestoreLimit(1000)
+          )
+        : query(reviewsRef, where('status', '==', 'approved'), firestoreLimit(1000));
+
+      const fallbackSnap = await getDocs(fallbackQuery);
+      const sorted = dedupeReviewsById(
+        fallbackSnap.docs
+          .map((docSnap) => ({
+            ms: timestampToMs(docSnap.data().createdAt),
+            id: docSnap.id,
+            item: mapReviewDoc(docSnap.id, docSnap.data()),
+          }))
+          .sort((a, b) => (b.ms !== a.ms ? b.ms - a.ms : a.id.localeCompare(b.id)))
+          .map((entry) => entry.item)
+      );
+
+      const sliced = sorted.slice(currentOffset, currentOffset + safeLimit);
+      const hasMore = sorted.length > currentOffset + safeLimit;
 
       return {
-        reviews: sorted.slice(offset, offset + limit),
-        totalMatching: Math.min(totalMatching, sorted.length),
+        reviews: sliced,
+        hasMore,
+        nextCursor: hasMore
+          ? {
+              docSnapshot: null,
+              offset: currentOffset + sliced.length,
+            }
+          : null,
       };
     }
   } catch (err) {

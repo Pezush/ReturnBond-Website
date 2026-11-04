@@ -1,26 +1,35 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertCircle,
+  ArrowLeft,
+  ArrowRight,
   Check,
   CheckCircle2,
   ChevronDown,
   Loader2,
   Lock,
   MessageSquare,
+  RefreshCw,
   ShieldCheck,
   Star,
   UserRound,
 } from 'lucide-react';
 import {
+  ALL_REVIEWS_PAGE_SIZE,
   EMPTY_RATING_SUMMARY,
   FEEDBACK_CATEGORIES,
+  HOMEPAGE_REVIEWS_LIMIT,
+  dedupeReviewsById,
   fetchApprovedReviewsPage,
   formatReviewDate,
+  shouldShowViewAllReviews,
   submitPrivateFeedback,
   submitPublicReview,
   type FeedbackCategory,
   type PublicReview,
   type RatingSummary,
+  type ReviewsPageCursor,
 } from '../lib/reviewsApi';
 import {
   FIREBASE_PROJECT_ID,
@@ -29,7 +38,6 @@ import {
   isFirebaseConfigured,
 } from '../lib/firebase';
 
-const REVIEWS_PAGE_SIZE = 6;
 const RATING_LABELS: Record<number, string> = {
   1: '1 star · Needs work',
   2: '2 stars · Fair',
@@ -37,6 +45,12 @@ const RATING_LABELS: Record<number, string> = {
   4: '4 stars · Very good',
   5: '5 stars · Excellent',
 };
+
+function parseStarParam(raw: string | null): number | null {
+  if (!raw) return null;
+  const num = Number(raw);
+  return Number.isInteger(num) && num >= 1 && num <= 5 ? num : null;
+}
 
 function StarRow({
   value,
@@ -73,6 +87,180 @@ function StarRow({
         );
       })}
     </span>
+  );
+}
+
+function RatingOverviewCard({
+  summary,
+  summaryLoading,
+  starFilter,
+  onToggleStarFilter,
+}: {
+  summary: RatingSummary;
+  summaryLoading: boolean;
+  starFilter: number | null;
+  onToggleStarFilter: (star: number) => void;
+}) {
+  const effectiveSummary = summary ?? EMPTY_RATING_SUMMARY;
+  const hasApprovedRatings = effectiveSummary.totalReviews > 0;
+
+  return (
+    <div className="play-rating-card" data-testid="rating_overview_card">
+      <div className="play-score-col">
+        <div className="play-big-score">
+          {summaryLoading
+            ? '—'
+            : hasApprovedRatings
+              ? effectiveSummary.averageRating.toFixed(1)
+              : '0.0'}
+        </div>
+        <StarRow
+          value={hasApprovedRatings ? effectiveSummary.averageRating : 0}
+          size={18}
+          className="play-score-stars"
+        />
+        <div className="play-total-count">
+          {summaryLoading
+            ? 'Loading ratings…'
+            : hasApprovedRatings
+              ? `${effectiveSummary.totalReviews.toLocaleString()} ${
+                  effectiveSummary.totalReviews === 1 ? 'rating' : 'ratings'
+                }`
+              : 'No ratings yet'}
+        </div>
+      </div>
+
+      <div className="play-bars-col" aria-label="Star rating distribution">
+        {([5, 4, 3, 2, 1] as const).map((star) => {
+          const count = effectiveSummary.distribution[star] ?? 0;
+          const pct =
+            effectiveSummary.totalReviews > 0
+              ? Math.round((count / effectiveSummary.totalReviews) * 100)
+              : 0;
+          const isSelectedFilter = starFilter === star;
+          return (
+            <button
+              key={star}
+              type="button"
+              className={`play-bar-row ${isSelectedFilter ? 'is-selected' : ''}`}
+              onClick={() => onToggleStarFilter(star)}
+              title={`Filter by ${star}-star reviews (${count})`}
+              aria-label={`${star} stars: ${count} ratings (${pct}%). Click to filter.`}
+            >
+              <span className="play-bar-label">{star}</span>
+              <Star size={12} className="rb-star-filled" aria-hidden="true" />
+              <span className="play-bar-track">
+                <span className="play-bar-fill" style={{ width: `${pct}%` }} />
+              </span>
+              <span className="play-bar-count">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function StarFilterChips({
+  starFilter,
+  onSelectStarFilter,
+}: {
+  starFilter: number | null;
+  onSelectStarFilter: (next: number | null) => void;
+}) {
+  return (
+    <div className="star-filter-chips" role="group" aria-label="Filter reviews by star rating">
+      <button
+        type="button"
+        className={`filter-chip ${starFilter === null ? 'is-active' : ''}`}
+        aria-pressed={starFilter === null}
+        data-testid="filter_chip_all"
+        onClick={() => onSelectStarFilter(null)}
+      >
+        All
+      </button>
+      {([5, 4, 3, 2, 1] as const).map((star) => {
+        const label = star === 1 ? '1 Star' : `${star} Stars`;
+        const isActive = starFilter === star;
+        return (
+          <button
+            key={star}
+            type="button"
+            className={`filter-chip ${isActive ? 'is-active' : ''}`}
+            aria-pressed={isActive}
+            data-testid={`filter_chip_${star}`}
+            onClick={() => onSelectStarFilter(isActive ? null : star)}
+          >
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function PublicReviewCard({ review }: { review: PublicReview }) {
+  const author = review.display_name?.trim() || 'Anonymous';
+  const initial = author.charAt(0).toUpperCase();
+  const dateLabel = formatReviewDate(review.created_at);
+  const hasText = Boolean(review.review_text && review.review_text.trim());
+
+  return (
+    <article className="public-review-card">
+      <div className="review-card-top">
+        <div className="review-author">
+          <div className="review-avatar" aria-hidden="true">
+            {author === 'Anonymous' ? <UserRound size={16} /> : initial}
+          </div>
+          <div>
+            <strong>{author}</strong>
+            <div className="review-meta-line">
+              <StarRow value={review.rating} size={13} />
+              {dateLabel && <span>{dateLabel}</span>}
+            </div>
+          </div>
+        </div>
+        {review.app_version && <span className="review-version-tag">v{review.app_version}</span>}
+      </div>
+
+      {hasText ? (
+        <p className="review-body-text">{review.review_text}</p>
+      ) : (
+        <p className="review-body-muted">Rated {review.rating} out of 5 stars</p>
+      )}
+    </article>
+  );
+}
+
+function FirebaseConfigBanner({ summaryError }: { summaryError: string | null }) {
+  return (
+    <>
+      {!isFirebaseConfigured && (
+        <div className="rb-config-banner" role="status">
+          <AlertCircle size={18} aria-hidden="true" />
+          <div>
+            <strong>Firebase Web SDK configuration required ({FIREBASE_PROJECT_ID})</strong>
+            <p>
+              To activate live ratings, public reviews, and private feedback on{' '}
+              <code>{FIREBASE_PROJECT_ID}</code>, set <code>VITE_FIREBASE_API_KEY</code> and{' '}
+              <code>VITE_FIREBASE_APP_ID</code> in your environment variables and merge{' '}
+              <code>firestore.website.rules</code> into your Cloud Firestore Rules (keeping your
+              existing <code>users</code> and <code>requests</code> rules intact).
+            </p>
+          </div>
+        </div>
+      )}
+
+      {isFirebaseConfigured && summaryError && (
+        <div className="rb-config-banner rb-banner-error" role="alert">
+          <AlertCircle size={18} aria-hidden="true" />
+          <div>
+            <strong>Could not load live rating statistics</strong>
+            <p>{summaryError}</p>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -141,13 +329,13 @@ export function RatingsAndReviewsSection({
   const formIdPrefix = useId();
   const [activeTab, setActiveTab] = useState<'review' | 'feedback'>('review');
 
-  // Public reviews list & pagination state
+  // Homepage displays at most 5 newest approved matching reviews
   const [reviews, setReviews] = useState<PublicReview[]>([]);
-  const [totalMatching, setTotalMatching] = useState(0);
+  const [hasMoreMatching, setHasMoreMatching] = useState(false);
   const [starFilter, setStarFilter] = useState<number | null>(null);
   const [listLoading, setListLoading] = useState<boolean>(isFirebaseConfigured);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
+  const activeRequestIdRef = useRef(0);
 
   // Public review form state
   const [selectedRating, setSelectedRating] = useState<number>(0);
@@ -171,56 +359,39 @@ export function RatingsAndReviewsSection({
   const [feedbackSuccess, setFeedbackSuccess] = useState<string | null>(null);
   const feedbackFormOpenedAt = useRef<number>(Date.now());
 
-  const loadInitialReviews = useCallback(async (filter: number | null) => {
+  const loadHomepageReviews = useCallback(async (filter: number | null) => {
+    const requestId = ++activeRequestIdRef.current;
+
     if (!isFirebaseConfigured) {
       setListLoading(false);
       setReviews([]);
-      setTotalMatching(0);
+      setHasMoreMatching(false);
       return;
     }
+
     setListLoading(true);
     setListError(null);
     try {
       const page = await fetchApprovedReviewsPage({
-        offset: 0,
-        limit: REVIEWS_PAGE_SIZE,
+        limit: HOMEPAGE_REVIEWS_LIMIT,
         starFilter: filter,
       });
-      setReviews(page.reviews);
-      setTotalMatching(page.totalMatching);
+      if (requestId !== activeRequestIdRef.current) return;
+      setReviews(page.reviews.slice(0, HOMEPAGE_REVIEWS_LIMIT));
+      setHasMoreMatching(page.hasMore);
     } catch (err) {
+      if (requestId !== activeRequestIdRef.current) return;
       setListError(err instanceof Error ? err.message : 'Unable to load reviews.');
     } finally {
-      setListLoading(false);
+      if (requestId === activeRequestIdRef.current) {
+        setListLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    void loadInitialReviews(starFilter);
-  }, [loadInitialReviews, starFilter]);
-
-  const handleLoadMore = async () => {
-    if (loadingMore || reviews.length >= totalMatching) return;
-    setLoadingMore(true);
-    setListError(null);
-    try {
-      const nextPage = await fetchApprovedReviewsPage({
-        offset: reviews.length,
-        limit: REVIEWS_PAGE_SIZE,
-        starFilter,
-      });
-      setReviews((prev) => {
-        const existingIds = new Set(prev.map((item) => item.id));
-        const uniqueNext = nextPage.reviews.filter((item) => !existingIds.has(item.id));
-        return [...prev, ...uniqueNext];
-      });
-      setTotalMatching(nextPage.totalMatching);
-    } catch (err) {
-      setListError(err instanceof Error ? err.message : 'Unable to load more reviews.');
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+    void loadHomepageReviews(starFilter);
+  }, [loadHomepageReviews, starFilter]);
 
   const handleReviewSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -271,7 +442,7 @@ export function RatingsAndReviewsSection({
         );
       } else {
         setReviewSuccess('Thank you! Your rating has been published.');
-        await Promise.all([onSummaryRefresh(), loadInitialReviews(starFilter)]);
+        await Promise.all([onSummaryRefresh(), loadHomepageReviews(starFilter)]);
       }
     } catch (err) {
       setReviewError(err instanceof Error ? err.message : 'Unable to submit review.');
@@ -332,7 +503,17 @@ export function RatingsAndReviewsSection({
 
   const activeStarPreview = hoveredRating || selectedRating;
   const effectiveSummary = summary ?? EMPTY_RATING_SUMMARY;
-  const hasApprovedRatings = effectiveSummary.totalReviews > 0;
+  const displayedReviews = reviews.slice(0, HOMEPAGE_REVIEWS_LIMIT);
+  const showViewAllButton = shouldShowViewAllReviews({
+    listLoading,
+    hasMoreMatching,
+    totalApprovedReviews: effectiveSummary.totalReviews,
+    displayedCount: displayedReviews.length,
+    starFilter,
+  });
+
+  const viewAllDestination =
+    starFilter !== null && hasMoreMatching ? `/reviews?rating=${starFilter}` : '/reviews';
 
   return (
     <section id="ratings-reviews" className="reviews-section section-pad">
@@ -373,87 +554,15 @@ export function RatingsAndReviewsSection({
         </div>
       </div>
 
-      {!isFirebaseConfigured && (
-        <div className="rb-config-banner" role="status">
-          <AlertCircle size={18} aria-hidden="true" />
-          <div>
-            <strong>Firebase Web SDK configuration required ({FIREBASE_PROJECT_ID})</strong>
-            <p>
-              To activate live ratings, public reviews, and private feedback on{' '}
-              <code>{FIREBASE_PROJECT_ID}</code>, set <code>VITE_FIREBASE_API_KEY</code> and{' '}
-              <code>VITE_FIREBASE_APP_ID</code> in your environment variables and merge{' '}
-              <code>firestore.website.rules</code> into your Cloud Firestore Rules (keeping your
-              existing <code>users</code> and <code>requests</code> rules intact).
-            </p>
-          </div>
-        </div>
-      )}
-
-      {isFirebaseConfigured && summaryError && (
-        <div className="rb-config-banner rb-banner-error" role="alert">
-          <AlertCircle size={18} aria-hidden="true" />
-          <div>
-            <strong>Could not load live rating statistics</strong>
-            <p>{summaryError}</p>
-          </div>
-        </div>
-      )}
+      <FirebaseConfigBanner summaryError={summaryError} />
 
       <div className="reviews-top-grid">
-        {/* Google Play Store-inspired Rating Overview Card */}
-        <div className="play-rating-card" data-testid="rating_overview_card">
-          <div className="play-score-col">
-            <div className="play-big-score">
-              {summaryLoading
-                ? '—'
-                : hasApprovedRatings
-                  ? effectiveSummary.averageRating.toFixed(1)
-                  : '0.0'}
-            </div>
-            <StarRow
-              value={hasApprovedRatings ? effectiveSummary.averageRating : 0}
-              size={18}
-              className="play-score-stars"
-            />
-            <div className="play-total-count">
-              {summaryLoading
-                ? 'Loading ratings…'
-                : hasApprovedRatings
-                  ? `${effectiveSummary.totalReviews.toLocaleString()} ${
-                      effectiveSummary.totalReviews === 1 ? 'rating' : 'ratings'
-                    }`
-                  : 'No ratings yet'}
-            </div>
-          </div>
-
-          <div className="play-bars-col" aria-label="Star rating distribution">
-            {([5, 4, 3, 2, 1] as const).map((star) => {
-              const count = effectiveSummary.distribution[star] ?? 0;
-              const pct =
-                effectiveSummary.totalReviews > 0
-                  ? Math.round((count / effectiveSummary.totalReviews) * 100)
-                  : 0;
-              const isSelectedFilter = starFilter === star;
-              return (
-                <button
-                  key={star}
-                  type="button"
-                  className={`play-bar-row ${isSelectedFilter ? 'is-selected' : ''}`}
-                  onClick={() => setStarFilter((prev) => (prev === star ? null : star))}
-                  title={`Filter by ${star}-star reviews (${count})`}
-                  aria-label={`${star} stars: ${count} ratings (${pct}%). Click to filter.`}
-                >
-                  <span className="play-bar-label">{star}</span>
-                  <Star size={12} className="rb-star-filled" aria-hidden="true" />
-                  <span className="play-bar-track">
-                    <span className="play-bar-fill" style={{ width: `${pct}%` }} />
-                  </span>
-                  <span className="play-bar-count">{count}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <RatingOverviewCard
+          summary={effectiveSummary}
+          summaryLoading={summaryLoading}
+          starFilter={starFilter}
+          onToggleStarFilter={(star) => setStarFilter((prev) => (prev === star ? null : star))}
+        />
 
         {/* Submission Composer Card: Public Review OR Private Feedback */}
         <div className="reviews-composer-card">
@@ -739,29 +848,11 @@ export function RatingsAndReviewsSection({
         </div>
       </div>
 
-      {/* Approved Public Reviews Feed */}
+      {/* Approved Public Reviews Feed (Limited to 5 Newest on Homepage) */}
       <div className="reviews-feed-wrap">
         <div className="reviews-feed-toolbar">
           <h3>Recent community reviews</h3>
-          <div className="star-filter-chips" role="group" aria-label="Filter reviews by star rating">
-            <button
-              type="button"
-              className={`filter-chip ${starFilter === null ? 'is-active' : ''}`}
-              onClick={() => setStarFilter(null)}
-            >
-              All
-            </button>
-            {([5, 4, 3, 2, 1] as const).map((star) => (
-              <button
-                key={star}
-                type="button"
-                className={`filter-chip ${starFilter === star ? 'is-active' : ''}`}
-                onClick={() => setStarFilter((prev) => (prev === star ? null : star))}
-              >
-                {star} ★
-              </button>
-            ))}
-          </div>
+          <StarFilterChips starFilter={starFilter} onSelectStarFilter={setStarFilter} />
         </div>
 
         {listError && (
@@ -776,7 +867,7 @@ export function RatingsAndReviewsSection({
             <Loader2 size={22} className="rb-spin" aria-hidden="true" />
             <p>Loading approved reviews…</p>
           </div>
-        ) : reviews.length === 0 ? (
+        ) : displayedReviews.length === 0 ? (
           <div className="reviews-empty-state" data-testid="reviews_empty_state">
             <Star size={24} className="rb-star-empty" aria-hidden="true" />
             <p>
@@ -784,72 +875,279 @@ export function RatingsAndReviewsSection({
                 ? `No approved ${starFilter}-star reviews yet.`
                 : 'No public reviews yet. Be the first to rate ReturnBond above.'}
             </p>
+            {starFilter !== null && (
+              <button
+                type="button"
+                className="button button-quiet rb-switch-link"
+                onClick={() => setStarFilter(null)}
+              >
+                Show all ratings
+              </button>
+            )}
           </div>
         ) : (
-          <>
-            <div className="reviews-grid" data-testid="approved_reviews_list">
-              {reviews.map((review) => {
-                const author = review.display_name?.trim() || 'Anonymous';
-                const initial = author.charAt(0).toUpperCase();
-                const dateLabel = formatReviewDate(review.created_at);
-                const hasText = Boolean(review.review_text && review.review_text.trim());
+          <div className="reviews-grid" data-testid="approved_reviews_list">
+            {displayedReviews.map((review) => (
+              <PublicReviewCard key={review.id} review={review} />
+            ))}
+          </div>
+        )}
 
-                return (
-                  <article key={review.id} className="public-review-card">
-                    <div className="review-card-top">
-                      <div className="review-author">
-                        <div className="review-avatar" aria-hidden="true">
-                          {author === 'Anonymous' ? <UserRound size={16} /> : initial}
-                        </div>
-                        <div>
-                          <strong>{author}</strong>
-                          <div className="review-meta-line">
-                            <StarRow value={review.rating} size={13} />
-                            {dateLabel && <span>{dateLabel}</span>}
-                          </div>
-                        </div>
-                      </div>
-                      {review.app_version && (
-                        <span className="review-version-tag">v{review.app_version}</span>
-                      )}
-                    </div>
-
-                    {hasText ? (
-                      <p className="review-body-text">{review.review_text}</p>
-                    ) : (
-                      <p className="review-body-muted">
-                        Rated {review.rating} out of 5 stars
-                      </p>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-
-            {reviews.length < totalMatching && (
-              <div className="reviews-load-more">
-                <button
-                  type="button"
-                  className="button button-quiet rb-load-more-btn"
-                  disabled={loadingMore}
-                  onClick={() => void handleLoadMore()}
-                  data-testid="load_more_reviews_button"
-                >
-                  {loadingMore ? (
-                    <>
-                      <Loader2 size={16} className="rb-spin" aria-hidden="true" /> Loading more…
-                    </>
-                  ) : (
-                    <>
-                      Load more reviews ({reviews.length} of {totalMatching})
-                    </>
-                  )}
-                </button>
-              </div>
-            )}
-          </>
+        {showViewAllButton && (
+          <div className="reviews-view-all-wrap">
+            <Link
+              to={viewAllDestination}
+              className="button button-dark rb-view-all-btn"
+              data-testid="view_all_reviews_button"
+            >
+              View All Reviews <ArrowRight size={16} aria-hidden="true" />
+            </Link>
+          </div>
         )}
       </div>
     </section>
+  );
+}
+
+export function AllReviewsPage({
+  summary,
+  summaryLoading,
+  summaryError,
+}: {
+  summary: RatingSummary;
+  summaryLoading: boolean;
+  summaryError: string | null;
+}) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const starFilter = parseStarParam(searchParams.get('rating'));
+
+  const [reviews, setReviews] = useState<PublicReview[]>([]);
+  const [nextCursor, setNextCursor] = useState<ReviewsPageCursor | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [listLoading, setListLoading] = useState<boolean>(isFirebaseConfigured);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const activeRequestIdRef = useRef(0);
+
+  const handleStarFilterChange = useCallback(
+    (next: number | null) => {
+      const updated = new URLSearchParams(searchParams);
+      if (next && next >= 1 && next <= 5) {
+        updated.set('rating', String(next));
+      } else {
+        updated.delete('rating');
+      }
+      setSearchParams(updated, { replace: true });
+    },
+    [searchParams, setSearchParams]
+  );
+
+  const loadFirstBatch = useCallback(async (filter: number | null) => {
+    const requestId = ++activeRequestIdRef.current;
+
+    if (!isFirebaseConfigured) {
+      setListLoading(false);
+      setReviews([]);
+      setNextCursor(null);
+      setHasMore(false);
+      return;
+    }
+
+    setListLoading(true);
+    setListError(null);
+    try {
+      const page = await fetchApprovedReviewsPage({
+        limit: ALL_REVIEWS_PAGE_SIZE,
+        starFilter: filter,
+        cursor: null,
+      });
+      if (requestId !== activeRequestIdRef.current) return;
+      setReviews(page.reviews);
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+    } catch (err) {
+      if (requestId !== activeRequestIdRef.current) return;
+      setListError(err instanceof Error ? err.message : 'Unable to load community reviews.');
+    } finally {
+      if (requestId === activeRequestIdRef.current) {
+        setListLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFirstBatch(starFilter);
+  }, [loadFirstBatch, starFilter]);
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore || !nextCursor) return;
+    const requestId = activeRequestIdRef.current;
+    setLoadingMore(true);
+    setListError(null);
+    try {
+      const page = await fetchApprovedReviewsPage({
+        limit: ALL_REVIEWS_PAGE_SIZE,
+        starFilter,
+        cursor: nextCursor,
+      });
+      if (requestId !== activeRequestIdRef.current) return;
+      setReviews((prev) => dedupeReviewsById([...prev, ...page.reviews]));
+      setHasMore(page.hasMore);
+      setNextCursor(page.nextCursor);
+    } catch (err) {
+      if (requestId !== activeRequestIdRef.current) return;
+      setListError(err instanceof Error ? err.message : 'Unable to load more reviews.');
+    } finally {
+      if (requestId === activeRequestIdRef.current) {
+        setLoadingMore(false);
+      }
+    }
+  };
+
+  const effectiveSummary = summary ?? EMPTY_RATING_SUMMARY;
+  const matchingCountFromSummary =
+    starFilter !== null
+      ? effectiveSummary.distribution[starFilter as 1 | 2 | 3 | 4 | 5] ?? 0
+      : effectiveSummary.totalReviews;
+
+  return (
+    <main data-testid="all_reviews_page">
+      <section className="page-hero section-pad">
+        <div className="all-reviews-hero-top">
+          <Link
+            to="/#ratings-reviews"
+            className="reviews-back-link"
+            data-testid="back_to_home_link"
+          >
+            <ArrowLeft size={15} aria-hidden="true" /> Back to homepage
+          </Link>
+        </div>
+        <div className="all-reviews-hero-row">
+          <div>
+            <div className="eyebrow">Community ratings &amp; reviews</div>
+            <h1>All community reviews.</h1>
+            <p>
+              Browse publicly approved ratings and reviews shared by ReturnBond users, sorted from
+              newest to oldest.
+            </p>
+          </div>
+          <Link to="/#ratings-reviews" className="button button-primary all-reviews-write-cta">
+            Write a review <Star size={16} aria-hidden="true" />
+          </Link>
+        </div>
+      </section>
+
+      <section className="section-pad all-reviews-shell">
+        <FirebaseConfigBanner summaryError={summaryError} />
+
+        <div className="all-reviews-summary-wrap">
+          <RatingOverviewCard
+            summary={effectiveSummary}
+            summaryLoading={summaryLoading}
+            starFilter={starFilter}
+            onToggleStarFilter={(star) => handleStarFilterChange(starFilter === star ? null : star)}
+          />
+        </div>
+
+        <div className="reviews-feed-wrap">
+          <div className="reviews-feed-toolbar">
+            <div className="all-reviews-toolbar-title">
+              <h2>
+                {starFilter === null
+                  ? 'All approved reviews'
+                  : `${starFilter === 1 ? '1-star' : `${starFilter}-star`} reviews`}
+              </h2>
+              {!summaryLoading && (
+                <span className="all-reviews-count-pill">
+                  {matchingCountFromSummary.toLocaleString()}{' '}
+                  {matchingCountFromSummary === 1 ? 'review' : 'reviews'}
+                </span>
+              )}
+            </div>
+            <StarFilterChips
+              starFilter={starFilter}
+              onSelectStarFilter={handleStarFilterChange}
+            />
+          </div>
+
+          {listError && (
+            <div className="rb-form-alert rb-alert-error all-reviews-error-bar" role="alert">
+              <AlertCircle size={16} aria-hidden="true" />
+              <span>{listError}</span>
+              <button
+                type="button"
+                className="admin-btn"
+                onClick={() => void loadFirstBatch(starFilter)}
+              >
+                <RefreshCw size={13} aria-hidden="true" /> Retry
+              </button>
+            </div>
+          )}
+
+          {listLoading ? (
+            <div className="reviews-empty-state">
+              <Loader2 size={22} className="rb-spin" aria-hidden="true" />
+              <p>Loading community reviews…</p>
+            </div>
+          ) : reviews.length === 0 ? (
+            <div className="reviews-empty-state" data-testid="reviews_empty_state">
+              <Star size={24} className="rb-star-empty" aria-hidden="true" />
+              <p>
+                {starFilter
+                  ? `No approved ${starFilter}-star reviews match this filter yet.`
+                  : 'No public reviews have been published yet.'}
+              </p>
+              {starFilter !== null ? (
+                <button
+                  type="button"
+                  className="button button-quiet rb-switch-link"
+                  onClick={() => handleStarFilterChange(null)}
+                >
+                  Show all reviews
+                </button>
+              ) : (
+                <Link to="/#ratings-reviews" className="button button-quiet rb-switch-link">
+                  Be the first to rate ReturnBond
+                </Link>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="reviews-grid" data-testid="approved_reviews_list">
+                {reviews.map((review) => (
+                  <PublicReviewCard key={review.id} review={review} />
+                ))}
+              </div>
+
+              {hasMore && (
+                <div className="reviews-load-more">
+                  <button
+                    type="button"
+                    className="button button-quiet rb-load-more-btn"
+                    disabled={loadingMore}
+                    onClick={() => void handleLoadMore()}
+                    data-testid="load_more_reviews_button"
+                  >
+                    {loadingMore ? (
+                      <>
+                        <Loader2 size={16} className="rb-spin" aria-hidden="true" /> Loading more…
+                      </>
+                    ) : (
+                      <>Load more reviews</>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="all-reviews-bottom-nav">
+            <Link to="/#ratings-reviews" className="reviews-back-link">
+              <ArrowLeft size={15} aria-hidden="true" /> Back to ReturnBond homepage
+            </Link>
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }

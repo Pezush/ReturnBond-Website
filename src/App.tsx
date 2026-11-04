@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 
 import { AdminReviewsPage } from './components/AdminReviewsPage';
-import { HeroRatingSummary, RatingsAndReviewsSection } from './components/RatingsAndReviews';
+import { AllReviewsPage, HeroRatingSummary, RatingsAndReviewsSection } from './components/RatingsAndReviews';
 import { EMPTY_RATING_SUMMARY, fetchPublicRatingSummary, type RatingSummary } from './lib/reviewsApi';
 import { isFirebaseConfigured } from './lib/firebase';
 import { formatReleaseDate, latestRelease, releaseHistory, releaseMetadata } from './releaseConfig';
@@ -105,7 +105,17 @@ function Layout({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('system');
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
-  useEffect(() => setMenuOpen(false), [location.pathname]);
+  useEffect(() => {
+    setMenuOpen(false);
+    if (location.hash) {
+      const targetId = location.hash.slice(1);
+      window.requestAnimationFrame(() => {
+        document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    } else {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }
+  }, [location.pathname, location.hash]);
   return <div className={`site-shell theme-${theme}`}>
     <div className="announcement"><Sparkles size={14} /> Give. Track. Return. <span>•</span> Official Android website</div>
     <header className="navbar"><Brand /><nav className={`nav-links ${menuOpen ? 'is-open' : ''}`} aria-label="Main navigation"><Link to="/features">Features</Link><Link to="/how-it-works">How it works</Link><Link to="/help">Help</Link><Link to="/about">About</Link><Link className="button button-primary mobile-menu-cta" to="/download">Download ReturnBond <Download size={16} /></Link><div className="mobile-theme-picker"><ThemeSwitcher theme={theme} setTheme={setTheme} /></div></nav><div className="nav-actions"><ThemeSwitcher theme={theme} setTheme={setTheme} /><Link className="button button-small button-dark" to="/download">Download <ArrowRight size={15} /></Link><button className="menu-button" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu" aria-expanded={menuOpen}>{menuOpen ? <X /> : <Menu />}</button></div></header>
@@ -121,31 +131,18 @@ function ButtonLink({ to, children, light = false }: { to: string; children: Rea
 function CTA() { return <section className="download-section section-pad"><div className="download-inner"><div className="eyebrow">Official Android release</div><h2>Keep the next return<br /><span>clear and simple.</span></h2><p>Download the official ReturnBond APK and start keeping better records.</p><ButtonLink to="/download" light>Download ReturnBond</ButtonLink><small>Version {latestRelease.versionName} • Version code {latestRelease.versionCode} • {releaseMetadata.minimumAndroid}</small></div></section>; }
 function PhoneVisual({ large = false }: { large?: boolean }) { return <div className={`phone-wrap ${large ? 'phone-large' : ''}`}><div className="phone-glow" /><img src={PHONE_IMAGE} alt="ReturnBond app dashboard showing lending overview and quick actions" loading={large ? 'lazy' : 'eager'} /></div>; }
 
-function Home() {
+function Home({
+  ratingSummary,
+  summaryLoading,
+  summaryError,
+  refreshRatingSummary,
+}: {
+  ratingSummary: RatingSummary;
+  summaryLoading: boolean;
+  summaryError: string | null;
+  refreshRatingSummary: () => Promise<void>;
+}) {
   const [copied, setCopied] = useState(false);
-  const [ratingSummary, setRatingSummary] = useState<RatingSummary>(EMPTY_RATING_SUMMARY);
-  const [summaryLoading, setSummaryLoading] = useState<boolean>(isFirebaseConfigured);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-
-  const refreshRatingSummary = useCallback(async () => {
-    if (!isFirebaseConfigured) {
-      setSummaryLoading(false);
-      return;
-    }
-    try {
-      setSummaryError(null);
-      const data = await fetchPublicRatingSummary();
-      setRatingSummary(data);
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : 'Unable to load ratings.');
-    } finally {
-      setSummaryLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshRatingSummary();
-  }, [refreshRatingSummary]);
 
   const copy = () => {
     navigator.clipboard?.writeText(UPI_ID);
@@ -215,6 +212,84 @@ function InfoPage({ kind }: { kind: 'privacy' | 'data-safety' | 'about' | 'conta
 
 function NotFound() { return <main><PageHero eyebrow="404" title="This page is not in the record." text="The page you are looking for may have moved. Return to the homepage or explore the features." /><div className="not-found-actions section-pad"><ButtonLink to="/">Back to home</ButtonLink><ButtonLink to="/features">Explore features</ButtonLink></div></main>; }
 
-function AppRoutes() { return <Layout><Routes><Route path="/" element={<Home />} /><Route path="/features" element={<FeaturesPage />} />{features.map(({ slug }) => <Route path={`/features/${slug}`} element={<FeaturePage slug={slug} />} key={slug} />)}<Route path="/how-it-works" element={<HowItWorks />} /><Route path="/faq" element={<FAQPage />} /><Route path="/help" element={<HelpPage />} />{helpArticles.map(([slug]) => <Route path={`/help/${slug}`} element={<HelpArticle slug={slug} />} key={slug} />)}<Route path="/download" element={<DownloadPage />} /><Route path="/updates" element={<UpdatesPage />} /><Route path="/privacy" element={<InfoPage kind="privacy" />} /><Route path="/data-safety" element={<InfoPage kind="data-safety" />} /><Route path="/about" element={<InfoPage kind="about" />} /><Route path="/contact" element={<InfoPage kind="contact" />} /><Route path="/terms" element={<InfoPage kind="terms" />} /><Route path="/admin" element={<AdminReviewsPage />} /><Route path="/404" element={<NotFound />} /><Route path="*" element={<NotFound />} /></Routes></Layout>; }
+function AppRoutes() {
+  const [ratingSummary, setRatingSummary] = useState<RatingSummary>(EMPTY_RATING_SUMMARY);
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(isFirebaseConfigured);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const refreshRatingSummary = useCallback(async () => {
+    if (!isFirebaseConfigured) {
+      setSummaryLoading(false);
+      return;
+    }
+    try {
+      setSummaryError(null);
+      const data = await fetchPublicRatingSummary();
+      setRatingSummary(data);
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : 'Unable to load ratings.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshRatingSummary();
+  }, [refreshRatingSummary]);
+
+  return (
+    <Layout>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            <Home
+              ratingSummary={ratingSummary}
+              summaryLoading={summaryLoading}
+              summaryError={summaryError}
+              refreshRatingSummary={refreshRatingSummary}
+            />
+          }
+        />
+        <Route
+          path="/reviews"
+          element={
+            <>
+              <SEO
+                title="Community Reviews | ReturnBond"
+                description="Read publicly approved community ratings and user reviews for ReturnBond for Android."
+              />
+              <AllReviewsPage
+                summary={ratingSummary}
+                summaryLoading={summaryLoading}
+                summaryError={summaryError}
+              />
+            </>
+          }
+        />
+        <Route path="/features" element={<FeaturesPage />} />
+        {features.map(({ slug }) => (
+          <Route path={`/features/${slug}`} element={<FeaturePage slug={slug} />} key={slug} />
+        ))}
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/faq" element={<FAQPage />} />
+        <Route path="/help" element={<HelpPage />} />
+        {helpArticles.map(([slug]) => (
+          <Route path={`/help/${slug}`} element={<HelpArticle slug={slug} />} key={slug} />
+        ))}
+        <Route path="/download" element={<DownloadPage />} />
+        <Route path="/updates" element={<UpdatesPage />} />
+        <Route path="/privacy" element={<InfoPage kind="privacy" />} />
+        <Route path="/data-safety" element={<InfoPage kind="data-safety" />} />
+        <Route path="/about" element={<InfoPage kind="about" />} />
+        <Route path="/contact" element={<InfoPage kind="contact" />} />
+        <Route path="/terms" element={<InfoPage kind="terms" />} />
+        <Route path="/admin" element={<AdminReviewsPage />} />
+        <Route path="/404" element={<NotFound />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Layout>
+  );
+}
 
 export default function App() { return <BrowserRouter><AppRoutes /></BrowserRouter>; }

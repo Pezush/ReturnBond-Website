@@ -542,16 +542,71 @@ h1 em, h2 span { font-style: normal; color: var(--blue); }
   font-style: italic;
   color: var(--muted);
 }
-.reviews-load-more {
+.reviews-load-more,
+.reviews-view-all-wrap {
   display: flex;
   justify-content: center;
-  margin-top: 24px;
+  margin-top: 28px;
 }
 .rb-load-more-btn {
   padding: 12px 20px;
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 10px;
+}
+.rb-view-all-btn {
+  padding: 14px 24px;
+  min-height: 46px;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(17, 36, 62, .14);
+}
+
+/* All Reviews Dedicated Page */
+.all-reviews-hero-top { margin-bottom: 20px; }
+.reviews-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--blue);
+  font-size: 12.5px;
+  font-weight: 800;
+  padding: 6px 0;
+  transition: transform .18s, color .18s;
+}
+.reviews-back-link:hover { transform: translateX(-2px); color: var(--blue-dark); }
+.all-reviews-hero-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 28px;
+  flex-wrap: wrap;
+}
+.all-reviews-write-cta { flex-shrink: 0; }
+.all-reviews-shell { padding-top: 56px; padding-bottom: 120px; }
+.all-reviews-summary-wrap { max-width: 680px; margin-bottom: 42px; }
+.all-reviews-toolbar-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.all-reviews-toolbar-title h2 { font-size: 21px; letter-spacing: -.03em; margin: 0; }
+.all-reviews-count-pill {
+  font: 11px 'DM Mono', monospace;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.all-reviews-error-bar { align-items: center; }
+.all-reviews-error-bar > span { flex: 1; }
+.all-reviews-bottom-nav {
+  margin-top: 44px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-start;
 }
 
 /* Admin Dashboard */
@@ -738,5 +793,9 @@ h1 em, h2 span { font-style: normal; color: var(--blue); }
   .composer-two-col { grid-template-columns: 1fr; }
   .reviews-mode-pills { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
   .mode-pill { justify-content: center; }
-  .composer-actions .button-primary { width: 100%; min-height: 48px; }
+  .composer-actions .button-primary,
+  .rb-view-all-btn,
+  .all-reviews-write-cta { width: 100%; min-height: 48px; }
+  .all-reviews-shell { padding-top: 38px; padding-bottom: 80px; }
+  .all-reviews-summary-wrap { margin-bottom: 32px; }
 }
