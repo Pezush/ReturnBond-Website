@@ -16,7 +16,7 @@ const APK_URL = latestRelease.downloadUrl;
 const UPI_ID = 'pijush4895m@okaxis';
 const UPI_URL = 'upi://pay?pa=pijush4895m@okaxis&pn=Pijush%20Mandal&cu=INR';
 const PHONE_IMAGE = '/images/file_000000001ebc81fb938f265e982f5cc8.png';
-const SITE_URL = 'https://returnbond-official.vercel.app';
+const SITE_URL = 'https://returnbond.site';
 
 type Theme = 'light' | 'dark' | 'system';
 type FAQItem = readonly [string, string];
