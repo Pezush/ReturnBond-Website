@@ -171,7 +171,16 @@ function Home({
         worstRating: 1,
       };
     }
-    return [{ '@context': 'https://schema.org', '@type': 'WebSite', name: 'ReturnBond', url: SITE_URL }, base];
+    return [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: 'ReturnBond',
+        alternateName: 'ReturnBond App',
+        url: `${SITE_URL}/`,
+      },
+      base,
+    ];
   }, [ratingSummary.averageRating, ratingSummary.totalReviews]);
 
   return <main>
